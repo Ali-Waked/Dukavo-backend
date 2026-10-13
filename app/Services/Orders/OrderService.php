@@ -1,0 +1,394 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Orders;
+
+use App\Enums\InventoryMovementType;
+use App\Enums\OrderStatus;
+use App\Enums\PaymentStatus;
+use App\Exceptions\BusinessRuleViolation;
+use App\Models\Customer;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderStatusHistory;
+use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Models\Store;
+use App\Models\Tenant;
+use App\Services\Inventory\InventoryService;
+use App\Support\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+/**
+ * Order creation and pricing.
+ *
+ * Money rule: the client may propose quantities, a discount and a tax rate, but
+ * it may never send a unit price or a total. Prices are read from the catalogue
+ * and every figure is computed here, so a tampered payload cannot change what a
+ * customer is charged.
+ */
+class OrderService
+{
+    public function __construct(
+        private readonly InventoryService $inventory,
+        private readonly TenantContext $tenants,
+    ) {}
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    public function create(array $attributes): Order
+    {
+        $tenant = $this->tenants->required();
+        $store = $this->resolveStore($attributes['store_id'] ?? null);
+
+        return DB::transaction(function () use ($tenant, $store, $attributes): Order {
+            $customer = isset($attributes['customer_id'])
+                ? Customer::query()->findOrFail($attributes['customer_id'])
+                : null;
+
+            $order = Order::query()->create([
+                'tenant_id' => $tenant->getKey(),
+                'store_id' => $store->getKey(),
+                'customer_id' => $customer?->getKey(),
+                'order_number' => $this->nextOrderNumber($store),
+                'status' => OrderStatus::Pending,
+                'payment_status' => PaymentStatus::Unpaid,
+                'currency' => $attributes['currency'] ?? $store->currency,
+                'customer_name' => $attributes['customer_name'] ?? $customer?->name,
+                'customer_phone' => $attributes['customer_phone'] ?? $customer?->phone,
+                'shipping_address' => $attributes['shipping_address'] ?? null,
+                'notes' => $attributes['notes'] ?? null,
+            ]);
+
+            // Server-owned timestamps are set explicitly rather than mass
+            // assigned: `placed_at` is not fillable, and adding it would let a
+            // crafted payload backdate an order out of every revenue report.
+            $order->forceFill(['placed_at' => now()])->save();
+
+            $this->recalculate($order, $attributes['items'] ?? [], [
+                'shipping_total' => $attributes['shipping_total'] ?? 0,
+                'tax_rate' => $attributes['tax_rate'] ?? 0,
+                'reserve_stock' => true,
+            ]);
+
+            $this->recordStatusHistory($order, null, OrderStatus::Pending, 'Order created');
+
+            $customer?->forceFill(['last_order_at' => now()])->save();
+
+            return $order->load(['items', 'store', 'customer', 'statusHistory']);
+        });
+    }
+
+    /**
+     * Replace the lines of an order that has not started fulfilment and
+     * recompute every total.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function update(Order $order, array $attributes): Order
+    {
+        if (! $order->isEditable()) {
+            throw BusinessRuleViolation::because('A '.strtolower($order->status->label()).' order can no longer be edited.');
+        }
+
+        return DB::transaction(function () use ($order, $attributes): Order {
+            if (array_key_exists('items', $attributes)) {
+                $this->releaseReservations($order);
+                $order->items()->delete();
+
+                $this->recalculate($order, $attributes['items'], [
+                    'shipping_total' => $attributes['shipping_total'] ?? $order->shipping_total,
+                    'tax_rate' => $attributes['tax_rate'] ?? 0,
+                    'reserve_stock' => true,
+                ]);
+                unset($attributes['items']);
+            }
+
+            $order->fill(array_intersect_key($attributes, array_flip([
+                'customer_name', 'customer_phone', 'shipping_address', 'notes',
+            ])))->save();
+
+            return $order->load(['items', 'store', 'customer', 'statusHistory']);
+        });
+    }
+
+    /**
+     * Build order lines from catalogue data and recompute the totals.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @param  array{shipping_total?: float, tax_rate?: float, reserve_stock?: bool}  $options
+     */
+    private function recalculate(Order $order, array $items, array $options = []): void
+    {
+        if ($items === []) {
+            throw BusinessRuleViolation::because('An order must contain at least one item.');
+        }
+
+        $shippingTotal = round((float) ($options['shipping_total'] ?? 0), 2);
+        $taxRate = max(0.0, min((float) ($options['tax_rate'] ?? 0), 1));
+        $reserveStock = (bool) ($options['reserve_stock'] ?? false);
+
+        $subtotal = 0.0;
+        $discountTotal = 0.0;
+        $taxTotal = 0.0;
+
+        foreach ($items as $line) {
+            $variant = $this->resolveVariant($line['product_id'] ?? null, $line['product_variant_id'] ?? null);
+            $product = $variant->product;
+
+            $quantity = (int) ($line['quantity'] ?? 1);
+
+            if ($quantity < 1) {
+                throw BusinessRuleViolation::because('Each order line must have a quantity of at least 1.');
+            }
+
+            // Unit price always comes from the catalogue, never the request.
+            $unitPrice = (float) $variant->price;
+            $lineSubtotal = round($unitPrice * $quantity, 2);
+
+            // A line discount may not exceed the line itself.
+            $lineDiscount = round(min((float) ($line['discount_total'] ?? 0), $lineSubtotal), 2);
+            $lineTaxable = max(0.0, $lineSubtotal - $lineDiscount);
+            $lineTax = $product->is_taxable ? round($lineTaxable * $taxRate, 2) : 0.0;
+            $lineTotal = round($lineTaxable + $lineTax, 2);
+
+            OrderItem::query()->create([
+                'tenant_id' => $order->tenant_id,
+                'order_id' => $order->getKey(),
+                'product_id' => $product->getKey(),
+                'product_variant_id' => $variant->getKey(),
+                'name' => $product->name.($variant->is_default ? '' : ' — '.$variant->name),
+                'sku' => $variant->sku ?? $product->sku,
+                'unit_price' => $unitPrice,
+                'quantity' => $quantity,
+                'discount_total' => $lineDiscount,
+                'tax_total' => $lineTax,
+                'line_total' => $lineTotal,
+            ]);
+
+            $subtotal += $lineSubtotal;
+            $discountTotal += $lineDiscount;
+            $taxTotal += $lineTax;
+
+            if ($reserveStock) {
+                $this->reserveStockForVariant($order, $variant, $quantity);
+            }
+        }
+
+        $grandTotal = round($subtotal - $discountTotal + $taxTotal + $shippingTotal, 2);
+
+        $order->forceFill([
+            'subtotal' => round($subtotal, 2),
+            'discount_total' => round($discountTotal, 2),
+            'tax_total' => round($taxTotal, 2),
+            'shipping_total' => $shippingTotal,
+            'grand_total' => $grandTotal,
+        ])->save();
+    }
+
+    /**
+     * Reserve stock for an order line so concurrent orders cannot oversell.
+     *
+     * The availability check lives inside {@see InventoryService::reserve()},
+     * which performs it under a row lock. Repeating the check here would only
+     * reintroduce the race it exists to prevent.
+     */
+    private function reserveStockForVariant(Order $order, ProductVariant $variant, int $quantity): void
+    {
+        $inventory = $this->inventory->findOrCreate($order->store, $variant);
+
+        $this->inventory->reserve(
+            $inventory,
+            $quantity,
+            $order->getMorphClass(),
+            $order->getKey(),
+        );
+    }
+
+    private function releaseReservations(Order $order): void
+    {
+        $lines = $order->items()->get()->map(fn (OrderItem $item): array => [
+            'product_variant_id' => $item->product_variant_id,
+            'store_id' => $order->store_id,
+            'quantity' => $item->quantity,
+        ])->all();
+
+        $this->inventory->release($order->store, $lines, $order->getMorphClass(), $order->getKey());
+    }
+
+    /**
+     * Deduct the physical quantity when an order ships: the reservation becomes
+     * a real withdrawal from the ledger.
+     */
+    public function consumeStock(Order $order): void
+    {
+        foreach ($order->items as $item) {
+            $inventory = $this->inventory->findOrCreate($order->store, $item->variant);
+
+            $this->inventory->consume(
+                $inventory,
+                $item->quantity,
+                'Order '.$order->order_number,
+                $order->getMorphClass(),
+                $order->getKey(),
+                auth()->id(),
+            );
+        }
+    }
+
+    /**
+     * Move an order to a new status, applying the side effects that belong to
+     * the transition: stock, reservations, payment and the history trail.
+     */
+    public function transition(Order $order, OrderStatus $status, ?string $note = null): Order
+    {
+        if ($order->status === $status) {
+            return $order;
+        }
+
+        if (! $order->status->canTransitionTo($status)) {
+            throw BusinessRuleViolation::because(sprintf(
+                'An order cannot move from %s to %s.',
+                $order->status->label(),
+                $status->label(),
+            ));
+        }
+
+        return DB::transaction(function () use ($order, $status, $note): Order {
+            $from = $order->status;
+            $attributes = ['status' => $status];
+
+            if ($status === OrderStatus::Cancelled) {
+                $attributes['cancelled_at'] = now();
+            }
+
+            if ($status === OrderStatus::Delivered && $order->payment_status === PaymentStatus::Unpaid) {
+                $attributes['payment_status'] = PaymentStatus::Paid;
+            }
+
+            $order->forceFill($attributes)->save();
+
+            // Stock leaves the warehouse when the goods actually ship, and
+            // comes back when the order is cancelled. Consuming a line also
+            // settles that line's reservation, so no second release is issued
+            // here; releasing again would hand the same units to another order.
+            if ($status === OrderStatus::Shipped && $from->consumesStock()) {
+                $this->consumeStock($order);
+            }
+
+            if ($status === OrderStatus::Cancelled) {
+                if ($from->consumesStock()) {
+                    $this->restock($order);
+                }
+
+                $this->releaseReservations($order);
+            }
+
+            $this->recordStatusHistory($order, $from, $status, $note);
+
+            return $order->load(['items.variant', 'store', 'customer', 'statusHistory']);
+        });
+    }
+
+    /**
+     * Record a payment against an order. Only the transition unpaid → paid is
+     * meaningful here; refunds are handled by the payment ledger in a future
+     * iteration of the billing module.
+     */
+    public function markPaid(Order $order): Order
+    {
+        $order->forceFill(['payment_status' => PaymentStatus::Paid])->save();
+
+        return $order;
+    }
+
+    /**
+     * Put stock back when an order is cancelled.
+     */
+    public function restock(Order $order): void
+    {
+        foreach ($order->items as $item) {
+            $inventory = $this->inventory->findOrCreate($order->store, $item->variant);
+
+            $this->inventory->applyMovement(
+                $inventory,
+                InventoryMovementType::ReturnIn,
+                $item->quantity,
+                'Order '.$order->order_number.' cancelled',
+                $order->getMorphClass(),
+                $order->getKey(),
+                auth()->id(),
+            );
+        }
+    }
+
+    private function recordStatusHistory(Order $order, ?OrderStatus $from, OrderStatus $to, ?string $note = null): OrderStatusHistory
+    {
+        return OrderStatusHistory::query()->create([
+            'tenant_id' => $order->tenant_id,
+            'order_id' => $order->getKey(),
+            'user_id' => auth()->id(),
+            'from_status' => $from,
+            'to_status' => $to,
+            'note' => $note,
+            'created_at' => now(),
+        ]);
+    }
+
+    private function resolveVariant(mixed $productId, mixed $variantId): ProductVariant
+    {
+        if ($variantId !== null && $variantId !== '') {
+            return ProductVariant::query()->with('product')->findOrFail($variantId);
+        }
+
+        $product = Product::query()->with('variants')->findOrFail($productId);
+        $variant = $product->defaultVariant();
+
+        if (! $variant instanceof ProductVariant) {
+            throw BusinessRuleViolation::because('This product has no purchasable variant.');
+        }
+
+        return $variant->load('product');
+    }
+
+    private function resolveStore(mixed $storeId): Store
+    {
+        if ($storeId === null || $storeId === '') {
+            // A tenant always has a default store, so an order is never orphaned.
+            return Store::query()->where('is_default', true)->first()
+                ?? Store::query()->firstOrFail();
+        }
+
+        return Store::query()->findOrFail($storeId);
+    }
+
+    /**
+     * Human-readable, tenant-scoped order number.
+     *
+     * The store row is locked first so that two simultaneous checkouts in the
+     * same store queue up instead of both claiming the same sequence number.
+     * Orders in different stores are numbered independently, which is fine for
+     * an internal reference and keeps the lock short.
+     */
+    private function nextOrderNumber(Store $store): string
+    {
+        $padding = (int) config('dukavo.order_number.padding', 6);
+        $prefix = Str::upper((string) config('dukavo.order_number.prefix', 'ORD'));
+
+        // Order numbers are unique per tenant, not per store, so the lock has to
+        // be taken on the tenant row. Locking the store serialises numbering only
+        // for orders of that one store and would let two stores issue the same
+        // number.
+        Tenant::query()->lockForUpdate()->findOrFail($store->tenant_id);
+
+        $sequence = (Order::query()
+            ->withoutGlobalScopes()
+            ->where('tenant_id', $store->tenant_id)
+            ->max('id') ?? 0) + 1;
+
+        return sprintf('%s-%0'.$padding.'d', $prefix, $sequence);
+    }
+}
