@@ -2,10 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\Ai\ContentAssistantController;
+use App\Http\Controllers\Api\V1\Ai\ConversationAssistantController;
+use App\Http\Controllers\Api\V1\Ai\InsightsController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\Catalog\CategoryController;
 use App\Http\Controllers\Api\V1\Catalog\ProductController;
+use App\Http\Controllers\Api\V1\Catalog\ProductImageController;
 use App\Http\Controllers\Api\V1\ConversationController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\DashboardController;
@@ -18,6 +22,7 @@ use App\Http\Controllers\Api\V1\Marketing\NewsletterArticleController as Marketi
 use App\Http\Controllers\Api\V1\Marketing\NewsletterController;
 use App\Http\Controllers\Api\V1\Marketing\PricingController;
 use App\Http\Controllers\Api\V1\Marketing\WaitlistController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\NotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OnboardingController;
 use App\Http\Controllers\Api\V1\OrderController;
@@ -28,6 +33,7 @@ use App\Http\Controllers\Api\V1\Platform\FaqEntryController;
 use App\Http\Controllers\Api\V1\Platform\NewsletterController as PlatformNewsletterController;
 use App\Http\Controllers\Api\V1\Platform\NewsletterSubscriberController;
 use App\Http\Controllers\Api\V1\Platform\PlatformDashboardController;
+use App\Http\Controllers\Api\V1\Platform\PlatformInsightsController;
 use App\Http\Controllers\Api\V1\Platform\PricingPlanController;
 use App\Http\Controllers\Api\V1\Platform\TenantController;
 use App\Http\Controllers\Api\V1\Platform\UserController as PlatformUserController;
@@ -40,7 +46,6 @@ use App\Http\Controllers\Api\V1\TenantSettingsController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\WhatsappAccountController;
 use App\Http\Controllers\Api\Webhook\WhatsappWebhookController;
-use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -77,24 +82,13 @@ use Illuminate\Support\Facades\Route;
  * The `web` middleware applied inside the vendor file is deliberate: the SPA
  * authenticates with a session cookie through Sanctum's stateful middleware, and
  * CSRF protection belongs to that flow.
+ *
+ * Fortify only emits the register routes when Features::registration() is
+ * enabled; Dukavo leaves it off (see config/fortify.php), so the public
+ * registration endpoint and its dedicated throttle are intentionally absent.
  */
 Route::prefix('auth')->group(function (): void {
     require base_path('vendor/laravel/fortify/routes/routes.php');
-
-    // Registration is anonymous, so the login limiter (keyed by email) does
-    // not cover it: a flood of signups would create user rows, not failed
-    // logins. Route::middleware() merges, so Fortify's own `web` and `guest`
-    // stack stays intact and only `throttle:register` (5/min per IP, defined
-    // in AppServiceProvider) is added.
-    //
-    // The route is found by scanning rather than by the name lookup table:
-    // Fortify assigns the name fluently *after* the route enters the
-    // collection, and that table is only rebuilt once route loading finishes.
-    // firstOrFail makes a renamed Fortify route fail loudly here instead of
-    // silently leaving registration unlimited.
-    collect(app('router')->getRoutes()->getRoutes())
-        ->firstOrFail(fn (RoutingRoute $route): bool => $route->getName() === 'register.store')
-        ->middleware('throttle:register');
 });
 
 // Dukavo's own sign-out replaces Fortify's for the same URI: Fortify's is bound
@@ -175,8 +169,24 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::delete('sessions', [ProfileSessionController::class, 'destroyOthers'])->name('sessions.destroy-others');
         Route::delete('sessions/{token}', [ProfileSessionController::class, 'destroy'])->name('sessions.destroy');
 
+        Route::get('notifications/channels', [NotificationPreferenceController::class, 'channels'])->name('notifications.channels');
         Route::get('notifications', [NotificationPreferenceController::class, 'show'])->name('notifications.show');
         Route::put('notifications', [NotificationPreferenceController::class, 'update'])->name('notifications.update');
+    });
+
+    /*
+     * Notification centre. Personal to the signed-in account, so — like the
+     * profile above — these sit outside the `tenant` group: a multi-tenant user
+     * has one bell across every workspace. The action routes precede the bare
+     * `{notification}` route so "read-all" and "unread-count" are never parsed
+     * as an id.
+     */
+    Route::prefix('notifications')->name('api.notifications.')->group(function (): void {
+        Route::get('/', [NotificationController::class, 'index'])->name('index');
+        Route::get('unread-count', [NotificationController::class, 'unreadCount'])->name('unread-count');
+        Route::post('read-all', [NotificationController::class, 'readAll'])->name('read-all');
+        Route::post('{notification}/read', [NotificationController::class, 'read'])->name('read');
+        Route::delete('{notification}', [NotificationController::class, 'destroy'])->name('destroy');
     });
 
     /*
@@ -199,6 +209,17 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
          * the platform level rather than inside a merchant workspace.
          */
         Route::get('dashboard', [PlatformDashboardController::class, 'index'])->name('dashboard');
+
+        /*
+         * AI assistance for Dukavo staff. Platform-level because both endpoints
+         * work on Dukavo's own data (the cross-tenant overview and the marketing
+         * newsletters), never a merchant workspace. `permission:ai.use` is held by
+         * Super Admin and Dukavo Admin, and can be revoked per role.
+         */
+        Route::get('ai/insights', [PlatformInsightsController::class, 'index'])
+            ->middleware('permission:ai.use')->name('ai.insights');
+        Route::post('ai/newsletter-content', [ContentAssistantController::class, 'generate'])
+            ->middleware('permission:ai.use')->name('ai.newsletter-content');
 
         Route::get('tenants', [TenantController::class, 'index'])->name('tenants.index');
         Route::post('tenants', [TenantController::class, 'store'])->name('tenants.store');
@@ -357,6 +378,15 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::patch('products/{product:slug}', [ProductController::class, 'update'])->middleware('permission:products.update')->name('products.update');
         Route::delete('products/{product:slug}', [ProductController::class, 'destroy'])->middleware('permission:products.delete')->name('products.destroy');
 
+        // Product gallery. Editing a product's images needs products.update, the
+        // same permission as editing the product itself — an image is part of
+        // that product's record, not a separate resource. `images/reorder`
+        // precedes the bound `{image}` routes so "reorder" is never parsed as id.
+        Route::post('products/{product:slug}/images/reorder', [ProductImageController::class, 'reorder'])->middleware('permission:products.update')->name('products.images.reorder');
+        Route::post('products/{product:slug}/images', [ProductImageController::class, 'store'])->middleware('permission:products.update')->name('products.images.store');
+        Route::patch('products/{product:slug}/images/{image}', [ProductImageController::class, 'update'])->middleware('permission:products.update')->name('products.images.update');
+        Route::delete('products/{product:slug}/images/{image}', [ProductImageController::class, 'destroy'])->middleware('permission:products.update')->name('products.images.destroy');
+
         // Inventory
         Route::get('inventory', [InventoryController::class, 'index'])->middleware('permission:inventory.view')->name('inventory.index');
         Route::get('inventory/low-stock', [InventoryController::class, 'lowStock'])->middleware('permission:inventory.view')->name('inventory.low-stock');
@@ -397,8 +427,11 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'reply'])->middleware('permission:conversations.reply')->name('conversations.reply');
         Route::post('conversations/{conversation}/assign', [ConversationController::class, 'assign'])->middleware('permission:conversations.assign')->name('conversations.assign');
 
-        // Channel settings
+        // Channel settings. The static `configuration` read is registered before
+        // `{whatsappAccount}` for the same reason `conversations/summary` is: a
+        // parameterised segment would otherwise swallow it and answer a 404.
         Route::get('whatsapp-accounts', [WhatsappAccountController::class, 'index'])->middleware('permission:whatsapp.view')->name('whatsapp.index');
+        Route::get('whatsapp-accounts/configuration', [WhatsappAccountController::class, 'configuration'])->middleware('permission:whatsapp.view')->name('whatsapp.configuration');
         Route::post('whatsapp-accounts', [WhatsappAccountController::class, 'store'])->middleware('permission:whatsapp.manage')->name('whatsapp.store');
         Route::get('whatsapp-accounts/{whatsappAccount}', [WhatsappAccountController::class, 'show'])->middleware('permission:whatsapp.view')->name('whatsapp.show');
         Route::patch('whatsapp-accounts/{whatsappAccount}', [WhatsappAccountController::class, 'update'])->middleware('permission:whatsapp.manage')->name('whatsapp.update');
@@ -412,6 +445,17 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('dashboard/revenue', [DashboardController::class, 'revenue'])->middleware('permission:dashboard.view')->name('dashboard.revenue');
         Route::get('dashboard/top-products', [DashboardController::class, 'topProducts'])->middleware('permission:dashboard.view')->name('dashboard.top-products');
         Route::get('dashboard/dead-stock', [DashboardController::class, 'deadStock'])->middleware('permission:dashboard.view')->name('dashboard.dead-stock');
+
+        /*
+         * AI assistance. Drafting a reply reads a conversation, so the route
+         * needs both the feature permission and conversation read access; the
+         * tenant briefing sits on top of the dashboard permission because it
+         * summarises exactly those aggregates. Both only ever return suggestions.
+         */
+        Route::post('conversations/{conversation}/ai-reply-draft', [ConversationAssistantController::class, 'draftReply'])
+            ->middleware(['permission:ai.use', 'permission:conversations.view'])->name('conversations.reply-draft');
+        Route::get('ai/insights', [InsightsController::class, 'tenant'])
+            ->middleware(['permission:ai.use', 'permission:dashboard.view'])->name('ai.insights');
 
         // Audit
         Route::get('audit-logs', [AuditLogController::class, 'index'])->middleware('permission:audit.view')->name('audit.index');

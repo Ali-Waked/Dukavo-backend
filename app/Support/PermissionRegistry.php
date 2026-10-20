@@ -65,6 +65,9 @@ final class PermissionRegistry
             'view' => 'View workspace settings',
             'manage' => 'Update workspace settings',
         ],
+        'ai' => [
+            'use' => 'Use AI assistance (reply drafts, insights, content help)',
+        ],
         'users' => [
             'view' => 'Browse tenant users',
             'manage' => 'Invite, update and remove tenant users',
@@ -160,7 +163,7 @@ final class PermissionRegistry
         if ($scope === RoleScope::Platform) {
             return $slug === 'super-admin'
                 ? self::slugs()
-                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view'];
+                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use'];
         }
 
         return match ($slug) {
@@ -183,6 +186,7 @@ final class PermissionRegistry
                 'conversations.reply',
                 'whatsapp.view',
                 'stores.view',
+                'ai.use',
             ],
             default => ['dashboard.view'],
         };
