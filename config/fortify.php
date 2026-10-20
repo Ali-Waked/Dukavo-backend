@@ -143,7 +143,10 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Registration is intentionally disabled: Dukavo onboards through the
+        // invite-only waitlist, and a platform operator creates each merchant
+        // account. Re-adding Features::registration() would publish the public
+        // POST /api/v1/auth/register endpoint (and its throttle) again.
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::updatePasswords(),

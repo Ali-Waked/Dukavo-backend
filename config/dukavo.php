@@ -127,6 +127,45 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Notifications
+    |--------------------------------------------------------------------------
+    |
+    | Which outbound channels a notification may actually leave on. The in-app
+    | copy is always written and is not governed here.
+    |
+    | `mail.enabled` is on by default because the deployment ships a mail
+    | transport; `whatsapp.enabled` is deliberately off until an approved
+    | message template exists. Business-initiated WhatsApp requires a template
+    | the provider has approved, and sending without one is a delivery that can
+    | never succeed — so the channel is recorded as skipped rather than faked.
+    |
+    | `require_verified_email` stops a transactional email going to an address
+    | the account holder has not proven they control.
+    |
+    */
+
+    'notifications' => [
+        'channels' => [
+            'mail' => [
+                'enabled' => (bool) env('DUKAVO_NOTIFICATION_MAIL', true),
+            ],
+            'whatsapp' => [
+                'enabled' => (bool) env('DUKAVO_NOTIFICATION_WHATSAPP', false),
+                'template' => env('DUKAVO_NOTIFICATION_WHATSAPP_TEMPLATE'),
+                'language' => env('DUKAVO_NOTIFICATION_WHATSAPP_LANGUAGE', 'en'),
+            ],
+        ],
+
+        'require_verified_email' => (bool) env('DUKAVO_NOTIFICATION_REQUIRE_VERIFIED_EMAIL', true),
+
+        'retry' => [
+            'times' => (int) env('DUKAVO_NOTIFICATION_RETRY_TIMES', 3),
+            'backoff' => [60, 300],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Marketing
     |--------------------------------------------------------------------------
     |
