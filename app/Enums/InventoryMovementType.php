@@ -10,6 +10,7 @@ namespace App\Enums;
  */
 enum InventoryMovementType: string
 {
+    case Initial = 'initial';
     case Purchase = 'purchase';
     case Sale = 'sale';
     case ReturnIn = 'return_in';
@@ -22,7 +23,7 @@ enum InventoryMovementType: string
     public function direction(): int
     {
         return match ($this) {
-            self::Purchase, self::ReturnIn => 1,
+            self::Initial, self::Purchase, self::ReturnIn => 1,
             self::Sale, self::ReturnOut => -1,
             self::Adjustment => 0,
         };
@@ -31,6 +32,7 @@ enum InventoryMovementType: string
     public function label(): string
     {
         return match ($this) {
+            self::Initial => 'Opening stock',
             self::Purchase => 'Purchase',
             self::Sale => 'Sale',
             self::ReturnIn => 'Return in',

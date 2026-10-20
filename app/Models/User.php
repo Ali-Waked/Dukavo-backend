@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
@@ -156,6 +157,21 @@ class User extends Authenticatable implements MustVerifyEmail
     public function roleAssignments(): HasMany
     {
         return $this->hasMany(UserRole::class);
+    }
+
+    /**
+     * In-app notifications addressed to this account.
+     *
+     * Overrides the `Notifiable` trait's own relation so it resolves to
+     * Dukavo's enriched notification model rather than Laravel's bare database
+     * notification row. A class method takes precedence over the trait's, which
+     * is what makes this override safe.
+     *
+     * @return MorphMany<Notification, $this>
+     */
+    public function notifications(): MorphMany
+    {
+        return $this->morphMany(Notification::class, 'notifiable');
     }
 
     /**

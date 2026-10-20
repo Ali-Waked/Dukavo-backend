@@ -17,9 +17,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * A tenant's WhatsApp Business account.
  *
  * `access_token` is encrypted at rest and hidden from serialisation; it is
- * never included in an API resource. The model deliberately knows nothing about
- * the Meta Graph API — that lives behind
- * {@see WhatsAppAccountService}.
+ * never included in an API resource. The model deliberately knows nothing
+ * about the Graph API protocol — connecting, verifying and calling Meta all
+ * live behind {@see WhatsAppAccountService} and the gateway it uses.
  */
 #[Fillable(['tenant_id', 'store_id', 'name', 'phone_number_id', 'business_account_id', 'whatsapp_business_account_id', 'phone_number', 'access_token', 'is_active', 'webhook_verify_token', 'status', 'error_message', 'meta'])]
 #[Hidden(['access_token'])]
@@ -53,12 +53,34 @@ class WhatsappAccount extends Model
     }
 
     /**
+     * Whether a phone number id plus a usable access token are both available.
+     *
+     * The merchant's own encrypted token always wins. When it is absent, the
+     * platform token from `config('services.whatsapp')` may back exactly one
+     * number — the one named by `WHATSAPP_PHONE_NUMBER_ID` — which is how a
+     * fresh installation exercises the channel before every tenant stores its
+     * own credential. It never applies to any other number, so one tenant can
+     * never send through another's connection by omitting a token.
+     */
+    public function hasUsableCredentials(): bool
+    {
+        if (blank($this->phone_number_id)) {
+            return false;
+        }
+
+        if (filled($this->access_token)) {
+            return true;
+        }
+
+        return (string) config('services.whatsapp.phone_number_id') === $this->phone_number_id
+            && filled(config('services.whatsapp.cloud_api_token'));
+    }
+
+    /**
      * Whether the account has everything the provider needs to send messages.
      */
     public function isUsable(): bool
     {
-        return $this->isConnected()
-            && filled($this->phone_number_id)
-            && filled($this->access_token);
+        return $this->isConnected() && $this->hasUsableCredentials();
     }
 }
