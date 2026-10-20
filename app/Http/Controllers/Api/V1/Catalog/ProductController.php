@@ -47,7 +47,9 @@ class ProductController extends Controller
                 'inventories',
                 fn ($inner) => $inner->lowStock(),
             ))
-            ->with(['variants', 'category', 'store'])
+            // `inventories` backs the aggregate `stock` block on every list row;
+            // without it the catalogue renders a blank stock figure.
+            ->with(['variants', 'category', 'store', 'inventories'])
             ->orderBy($this->sortColumn($request), $request->boolean('desc', true) ? 'desc' : 'asc')
             ->paginate($perPage)
             ->withQueryString();
@@ -86,7 +88,17 @@ class ProductController extends Controller
 
     public function show(Product $product): ProductResource
     {
-        return new ProductResource($product->load(['variants', 'images', 'category', 'store', 'inventories']));
+        // `variants.inventories` is loaded so each variant carries its own
+        // per-store stock figure; the product-level `inventories` still backs
+        // the aggregate `stock` block. Without the nested eager load the variant
+        // rows would render with a blank stock column.
+        return new ProductResource($product->load([
+            'variants.inventories',
+            'images',
+            'category',
+            'store',
+            'inventories',
+        ]));
     }
 
     public function update(UpdateProductRequest $request, Product $product): ProductResource

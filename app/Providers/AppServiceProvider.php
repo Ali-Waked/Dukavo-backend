@@ -20,8 +20,11 @@ use App\Models\Store;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\WhatsappAccount;
+use App\Services\Ai\Contracts\LanguageModel;
+use App\Services\Ai\Grok\GrokClient;
 use App\Services\Channels\WhatsApp\Contracts\WhatsAppGateway;
 use App\Services\Channels\WhatsApp\MetaCloudGateway;
+use App\Services\Notifications\NotificationEventCatalog;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -44,6 +47,25 @@ class AppServiceProvider extends ServiceProvider
         // The WhatsApp provider is reached only through its contract, so tests
         // and other channels can substitute an implementation.
         $this->app->bind(WhatsAppGateway::class, MetaCloudGateway::class);
+
+        // The event catalogue is immutable, so it is built once and shared
+        // rather than rebuilt on every resolve by the dispatcher and settings.
+        $this->app->singleton(NotificationEventCatalog::class);
+
+        // The language model is likewise resolved through a contract. All
+        // endpoint, credential and transport choices are injected from config,
+        // so no caller knows which provider is in use and tests can swap it.
+        $this->app->bind(LanguageModel::class, function (): LanguageModel {
+            $xai = (array) config('ai.xai');
+
+            return new GrokClient(
+                baseUrl: (string) ($xai['base_url'] ?? ''),
+                apiKey: is_string($xai['api_key'] ?? null) ? (string) $xai['api_key'] : null,
+                path: (string) ($xai['path'] ?? '/responses'),
+                defaultModel: (string) config('ai.model'),
+                transport: (array) config('ai.transport'),
+            );
+        });
     }
 
     public function boot(): void
@@ -78,6 +100,11 @@ class AppServiceProvider extends ServiceProvider
         // client from probing addresses over either endpoint.
         RateLimiter::for('newsletter', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('newsletter|'.$request->ip()));
+
+        // AI endpoints are expensive and identity-bound, so the burst guard is
+        // keyed on the authenticated user and, failing that, the client IP.
+        RateLimiter::for('ai', fn (Request $request): Limit => Limit::perMinute((int) config('ai.transport.rate_per_minute', 20))
+            ->by('ai|'.($request->user()?->getKey() ?? $request->ip())));
 
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,

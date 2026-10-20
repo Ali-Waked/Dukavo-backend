@@ -32,6 +32,11 @@ class CategoryController extends Controller
     {
         $categories = Category::query()
             ->active()
+            // Counted here so `CategoryResource`'s `products_count` is populated
+            // instead of being omitted, which the catalogue UI would render as a
+            // blank "-". The relation respects both soft deletes (archived
+            // products are excluded) and the tenant scope.
+            ->withCount('products')
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();

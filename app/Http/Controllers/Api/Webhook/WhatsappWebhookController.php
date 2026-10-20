@@ -14,20 +14,29 @@ use App\Support\ApiResponse;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Inbound Meta webhooks.
  *
- * Three rules govern this endpoint.
+ * Four rules govern this endpoint.
  *
  * 1. It must never leak a credential: the GET handshake echoes only the
- *    challenge, and only when the verify token matches a connected account.
- * 2. It must never fail a delivery: Meta retries anything that is not a 2xx, so
+ *    challenge, and only when the verify token matches the environment or a
+ *    connected account.
+ * 2. It must never be a write endpoint for whoever finds the URL: POST
+ *    deliveries are accepted only when Meta's `X-Hub-Signature-256` HMAC over
+ *    the raw body matches `WHATSAPP_APP_SECRET`, and refused otherwise.
+ * 3. It must never fail a delivery: Meta retries anything that is not a 2xx, so
  *    an unexpected payload is logged and acknowledged with a 200.
- * 3. It must not trust the sender's claims: the tenant comes from the account
+ * 4. It must not trust the sender's claims: the tenant comes from the account
  *    whose `phone_number_id` Meta signed the call with, and every query afterwards
  *    runs inside that tenant's context.
+ *
+ * The handshake answer is deliberately plain text, not JSON: Meta compares the
+ * response body against the challenge it sent, and a JSON envelope would never
+ * match.
  */
 class WhatsappWebhookController extends Controller
 {
@@ -39,22 +48,44 @@ class WhatsappWebhookController extends Controller
     /**
      * Meta's verification handshake.
      */
-    public function verify(Request $request): JsonResponse
+    public function verify(Request $request): Response
     {
         $token = $this->hubParameter($request, 'hub.verify_token');
 
         abort_unless(
-            $token !== ''
-                // No tenant is resolved during the handshake, and the token must
-                // be matched across accounts, so the scope is dropped explicitly.
-                && WhatsappAccount::query()
-                    ->acrossTenants()
-                    ->where('webhook_verify_token', $token)
-                    ->exists(),
+            $this->hubParameter($request, 'hub.mode') === 'subscribe'
+                && $token !== ''
+                && $this->verifyTokenMatches($token),
             403,
         );
 
-        return response()->json(['hub.challenge' => $this->hubParameter($request, 'hub.challenge')]);
+        return response($this->hubParameter($request, 'hub.challenge'), 200, [
+            'Content-Type' => 'text/plain; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * Accept the handshake only for a token Meta and Dukavo both know.
+     *
+     * Two tokens are accepted, because there are two configurations worth
+     * supporting: the environment-wide `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, which
+     * covers an installation before any tenant has connected a number, and the
+     * per-account token a merchant can rotate from the settings screen. The
+     * scope is dropped explicitly because no tenant is resolved during the
+     * handshake.
+     */
+    private function verifyTokenMatches(string $token): bool
+    {
+        $configured = config('services.whatsapp.webhook_verify_token');
+
+        if (is_string($configured) && $configured !== '' && hash_equals($configured, $token)) {
+            return true;
+        }
+
+        return WhatsappAccount::query()
+            ->acrossTenants()
+            ->where('webhook_verify_token', $token)
+            ->exists();
     }
 
     /**
@@ -81,6 +112,10 @@ class WhatsappWebhookController extends Controller
      */
     public function events(Request $request): JsonResponse
     {
+        if (($refusal = $this->refuseUnsigned($request)) !== null) {
+            return $refusal;
+        }
+
         try {
             $this->handle($request->all());
         } catch (\Throwable $exception) {
@@ -90,6 +125,49 @@ class WhatsappWebhookController extends Controller
         }
 
         return ApiResponse::success('Acknowledged.');
+    }
+
+    /**
+     * Refuse a delivery Meta did not sign, or one we cannot check at all.
+     *
+     * Without this check the endpoint would be an unauthenticated write into any
+     * merchant's inbox: a `phone_number_id` is not a secret, and posting a
+     * payload shaped like Meta's would let a stranger create conversations and
+     * customers inside a tenant they have no relationship with. The check fails
+     * closed — a missing `WHATSAPP_APP_SECRET` refuses deliveries rather than
+     * accepting them blind — because a silently disabled integration is a
+     * configuration problem to fix, whereas a forged one is a security incident.
+     *
+     * Only the result is compared, never the secret, and the raw body is what
+     * Meta signed: re-encoding the parsed payload would change its bytes.
+     */
+    private function refuseUnsigned(Request $request): ?JsonResponse
+    {
+        $secret = config('services.whatsapp.app_secret');
+
+        if (! is_string($secret) || $secret === '') {
+            Log::error('WhatsApp webhook rejected: WHATSAPP_APP_SECRET is not configured, so signatures cannot be verified.');
+
+            return ApiResponse::error('WhatsApp signature validation is not configured.', 403);
+        }
+
+        $header = (string) $request->header('X-Hub-Signature-256', '');
+
+        if (! str_starts_with($header, 'sha256=')) {
+            Log::warning('WhatsApp webhook rejected: no X-Hub-Signature-256 header.');
+
+            return ApiResponse::error('Missing WhatsApp signature.', 401);
+        }
+
+        $expected = hash_hmac('sha256', (string) $request->getContent(), $secret);
+
+        if (! hash_equals($expected, substr($header, 7))) {
+            Log::warning('WhatsApp webhook rejected: signature mismatch.');
+
+            return ApiResponse::error('Invalid WhatsApp signature.', 401);
+        }
+
+        return null;
     }
 
     /**
@@ -197,6 +275,13 @@ class WhatsappWebhookController extends Controller
                 $customer,
                 'whatsapp',
                 (string) ($message['from'] ?? ''),
+                [
+                    // The thread belongs to the number it arrived on, so a reply
+                    // cannot leave from a different connection — which matters the
+                    // moment a tenant runs more than one number.
+                    'whatsapp_account_id' => $account->getKey(),
+                    'store_id' => $account->store_id,
+                ],
             );
 
             $this->conversations->addMessage($conversation, MessageDirection::Inbound, [

@@ -37,6 +37,43 @@ class WhatsappAccountController extends Controller
         );
     }
 
+    /**
+     * The platform-level WhatsApp configuration, without any of its secrets.
+     *
+     * The SPA needs to explain *why* the channel is not working — a missing App
+     * Secret refuses every inbound delivery, an absent platform token means a new
+     * tenant has to supply their own — and it can only do that if it can ask. The
+     * answer is booleans plus the two public webhook URLs: never the token, the
+     * App Secret or the verify token, masked or otherwise. A masked secret is
+     * still a secret leaving the server and landing in a browser cache, a proxy
+     * log and a support screenshot.
+     */
+    public function configuration(): JsonResponse
+    {
+        $whatsapp = (array) config('services.whatsapp');
+        $appSecret = $whatsapp['app_secret'] ?? null;
+
+        return ApiResponse::success('WhatsApp configuration.', [
+            'api_version' => $whatsapp['cloud_api_version'] ?? null,
+            'api_host' => $whatsapp['api_base_url'] ?? null,
+            'configured' => [
+                'phone_number_id' => filled($whatsapp['phone_number_id'] ?? null),
+                'business_account_id' => filled($whatsapp['business_account_id'] ?? null),
+                'access_token' => filled($whatsapp['cloud_api_token'] ?? null),
+                'webhook_verify_token' => filled($whatsapp['webhook_verify_token'] ?? null),
+                'app_secret' => filled($appSecret),
+            ],
+            'webhook' => [
+                'verify_url' => route('webhooks.whatsapp.verify'),
+                'events_url' => route('webhooks.whatsapp.events'),
+                // Inbound deliveries are refused outright until the App Secret is
+                // set, so this is the difference between "nothing arrives" and
+                // "something is misconfigured at Meta".
+                'signature_validation' => filled($appSecret) ? 'enforced' : 'not_configured',
+            ],
+        ]);
+    }
+
     public function store(ConnectWhatsappAccountRequest $request): JsonResponse
     {
         return ApiResponse::created(

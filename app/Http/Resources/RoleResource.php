@@ -23,6 +23,7 @@ class RoleResource extends JsonResource
             'name' => $this->name,
             'slug' => $this->slug,
             'scope' => $this->scope->value,
+            'tenant_id' => $this->tenant_id,
             'scope_label' => $this->scope->label(),
             'description' => $this->description,
             'is_system' => $this->is_system,

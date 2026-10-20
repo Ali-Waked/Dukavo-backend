@@ -137,8 +137,14 @@ class UserController extends Controller
      */
     public function assignableRoles(): AnonymousResourceCollection
     {
+        // The shared system templates plus this workspace's own roles. Another
+        // tenant's custom roles are never offered for assignment.
         return RoleResource::collection(
-            Role::query()->tenantScoped()->with('permissions')->orderBy('name')->get()
+            Role::query()
+                ->visibleToTenant($this->tenants->required()->getKey())
+                ->with('permissions')
+                ->orderBy('name')
+                ->get()
         );
     }
 }

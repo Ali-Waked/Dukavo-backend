@@ -8,6 +8,7 @@ use App\Enums\RoleScope;
 use App\Http\Requests\ApiRequest;
 use App\Services\Rbac\PermissionService;
 use App\Support\PermissionRegistry;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -17,11 +18,15 @@ use Illuminate\Validation\Validator;
  * The permission list is validated against the registry rather than the
  * database, so a typo fails loudly instead of silently granting nothing. Scope
  * is validated against the *caller*, never against the payload: only a platform
- * administrator can mint a platform role.
+ * administrator can mint a platform role. A tenant role must be created inside
+ * a workspace, so it is owned by that tenant rather than left global.
  */
 class StoreRoleRequest extends ApiRequest
 {
-    public function __construct(private readonly PermissionService $permissions) {}
+    public function __construct(
+        private readonly PermissionService $permissions,
+        private readonly TenantContext $tenants,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -40,7 +45,17 @@ class StoreRoleRequest extends ApiRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            if ($this->input('scope') !== RoleScope::Platform->value) {
+            $scope = $this->input('scope');
+
+            // A tenant role must have a tenant to belong to; minting one with no
+            // workspace would make it global, i.e. shared by every merchant.
+            if ($scope === RoleScope::Tenant->value && $this->tenants->tenant() === null) {
+                $validator->errors()->add('scope', 'Tenant roles must be created inside a workspace.');
+
+                return;
+            }
+
+            if ($scope !== RoleScope::Platform->value) {
                 return;
             }
 

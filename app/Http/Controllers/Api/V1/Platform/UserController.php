@@ -16,9 +16,11 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\UserRole;
 use App\Services\Audit\AuditLogger;
+use App\Services\Rbac\PermissionService;
 use App\Services\Rbac\RoleService;
 use App\Services\Users\UserService;
 use App\Support\ApiResponse;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -44,6 +46,7 @@ class UserController extends Controller
     public function __construct(
         private readonly UserService $users,
         private readonly RoleService $roles,
+        private readonly PermissionService $permissions,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -75,6 +78,8 @@ class UserController extends Controller
     {
         /** @var Role $role */
         $role = Role::query()->findOrFail($request->validated('role_id'));
+
+        $this->assertMayManageSuperAdmin($role, $request->user());
 
         $user = $this->users->createPlatformUser(
             $role,
@@ -135,6 +140,7 @@ class UserController extends Controller
     public function assignRole(Request $request, User $user, Role $role): JsonResponse
     {
         $this->assertPlatformRole($role);
+        $this->assertMayManageSuperAdmin($role, $request->user());
 
         if ($user->platformRoles()->whereKey($role->getKey())->exists()) {
             return ApiResponse::success('Role assignment unchanged.', [
@@ -158,9 +164,10 @@ class UserController extends Controller
         ]);
     }
 
-    public function revokeRole(User $user, Role $role): Response
+    public function revokeRole(Request $request, User $user, Role $role): Response
     {
         $this->assertPlatformRole($role);
+        $this->assertMayManageSuperAdmin($role, $request->user());
         $this->assertMayRevoke($user, $role);
 
         $this->roles->revoke($user, $role, null);
@@ -181,6 +188,23 @@ class UserController extends Controller
     {
         if ($role->scope !== RoleScope::Platform) {
             throw BusinessRuleViolation::because('Only platform roles can be assigned to platform staff.');
+        }
+    }
+
+    /**
+     * The super administrator role is the highest privilege on the platform.
+     * A Dukavo Admin who could grant or revoke it would effectively be able to
+     * promote themselves, so both directions require the caller to already be a
+     * super administrator.
+     */
+    private function assertMayManageSuperAdmin(Role $role, ?User $actor): void
+    {
+        if ($role->slug !== 'super-admin') {
+            return;
+        }
+
+        if ($actor === null || ! $this->permissions->isSuperAdmin($actor)) {
+            throw new AuthorizationException('Only a super administrator can grant or revoke the super administrator role.');
         }
     }
 

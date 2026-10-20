@@ -50,6 +50,10 @@ class StoreProductRequest extends ApiRequest
             'variants.*.price' => ['required', 'numeric', 'min:0', 'max:99999999'],
             'variants.*.cost' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'variants.*.is_default' => ['sometimes', 'boolean'],
+            // Opening stock for the variant, recorded as an `initial` ledger
+            // movement in the product's store (or the tenant default) at
+            // creation. Zero still creates the inventory row.
+            'variants.*.initial_quantity' => ['sometimes', 'integer', 'min:0', 'max:1000000'],
         ];
     }
 

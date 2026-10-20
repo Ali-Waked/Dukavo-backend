@@ -23,15 +23,16 @@ use Throwable;
 /**
  * Meta WhatsApp Cloud API implementation of {@see WhatsAppGateway}.
  *
- * The access token is read from the encrypted model cast and only ever travels in
- * an `Authorization` header. Sending a message is a state changing call, so it is
+ * The Graph API version and host come from `config('services.whatsapp')` so a
+ * version sunset is a one-line environment change rather than a code release.
+ * The access token is read from the encrypted model cast — falling back to the
+ * platform token for the single configured number — and only ever travels in an
+ * `Authorization` header. Sending a message is a state changing call, so it is
  * deliberately *not* retried: a duplicate WhatsApp message is visible to the
  * customer and cannot be unsent.
  */
 class MetaCloudGateway implements WhatsAppGateway
 {
-    private const GRAPH_VERSION = 'v21.0';
-
     public function __construct(private readonly ConversationService $conversations) {}
 
     public function sendText(Conversation $conversation, string $body, ?string $externalId = null): string
@@ -88,7 +89,7 @@ class MetaCloudGateway implements WhatsAppGateway
 
     public function verifyAccount(WhatsappAccount $account): string
     {
-        if (blank($account->phone_number_id) || blank($account->access_token)) {
+        if (blank($account->phone_number_id) || blank($this->tokenFor($account))) {
             throw WhatsAppDeliveryFailed::missingCredentials('verify_account');
         }
 
@@ -118,16 +119,44 @@ class MetaCloudGateway implements WhatsAppGateway
 
     /**
      * Resolve the account behind a conversation and refuse to send without one.
+     *
+     * `conversations.channel_account` holds the *customer's* number — it is the
+     * recipient, never a Meta identifier — so the account cannot be looked up
+     * from it. It comes from `whatsapp_account_id`, which the webhook and the
+     * conversation starter both record, falling back to the tenant's own
+     * connection for threads opened before that column existed.
      */
     private function accountFor(Conversation $conversation, string $operation): WhatsappAccount
     {
-        $account = WhatsappAccount::query()
+        $connected = WhatsappAccount::query()
             ->where('tenant_id', $conversation->tenant_id)
-            ->where(function ($query) use ($conversation): void {
-                $query->where('phone_number_id', $conversation->channel_account)
-                    ->orWhere('business_account_id', $conversation->channel_account);
-            })
-            ->where('status', WhatsAppAccountStatus::Connected)
+            ->where('status', WhatsAppAccountStatus::Connected);
+
+        // A bound thread may only send through the number it belongs to: a
+        // conversation is bound, falling back to a different connection would
+        // answer the customer from a number they never wrote to.
+        if ($conversation->whatsapp_account_id !== null) {
+            $account = (clone $connected)->whereKey($conversation->whatsapp_account_id)->first();
+
+            if ($account === null || ! $account->isUsable()) {
+                throw WhatsAppDeliveryFailed::missingCredentials($operation);
+            }
+
+            return $account;
+        }
+
+        $account = (clone $connected)
+            ->when(
+                $conversation->store_id !== null,
+                // An unbound thread may only send through its own store's
+                // number, or through one the tenant left unassigned.
+                fn ($query) => $query->where(function ($scoped) use ($conversation): void {
+                    $scoped->where('store_id', $conversation->store_id)
+                        ->orWhereNull('store_id');
+                }),
+            )
+            ->orderByDesc('is_active')
+            ->orderBy('id')
             ->first();
 
         if ($account === null || ! $account->isUsable()) {
@@ -137,9 +166,28 @@ class MetaCloudGateway implements WhatsAppGateway
         return $account;
     }
 
+    /**
+     * The access token for a number: its own, or the platform token when this
+     * is the single number named in configuration. Never logged, never returned.
+     */
+    private function tokenFor(WhatsappAccount $account): ?string
+    {
+        if (filled($account->access_token)) {
+            return (string) $account->access_token;
+        }
+
+        if ((string) config('services.whatsapp.phone_number_id') !== (string) $account->phone_number_id) {
+            return null;
+        }
+
+        $token = config('services.whatsapp.cloud_api_token');
+
+        return filled($token) ? (string) $token : null;
+    }
+
     private function client(WhatsappAccount $account): PendingRequest
     {
-        return Http::withToken($account->access_token)
+        return Http::withToken((string) $this->tokenFor($account))
             ->acceptJson()
             ->asJson()
             ->connectTimeout(3)
@@ -153,7 +201,10 @@ class MetaCloudGateway implements WhatsAppGateway
 
     private function baseUrl(): string
     {
-        return sprintf('https://graph.facebook.com/%s', self::GRAPH_VERSION);
+        $version = (string) (config('services.whatsapp.cloud_api_version') ?: 'v26.0');
+        $host = rtrim((string) (config('services.whatsapp.api_base_url') ?: 'https://graph.facebook.com'), '/');
+
+        return sprintf('%s/%s', $host, ltrim($version, '/'));
     }
 
     private function messageIdFrom(Response $response, string $operation): string

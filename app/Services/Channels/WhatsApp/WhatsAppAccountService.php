@@ -80,10 +80,15 @@ class WhatsAppAccountService
 
     /**
      * Confirm with the provider that the credentials work, and record the result.
+     *
+     * The account needs a phone number id and a token — its own, or the platform
+     * token from configuration when this is the number that token belongs to.
+     * Anything less is refused before Meta is called, so the account is left in a
+     * clear `error` state rather than a misleading one.
      */
     public function verify(WhatsappAccount $account): WhatsappAccount
     {
-        if (blank($account->phone_number_id) || blank($account->access_token)) {
+        if (! $account->hasUsableCredentials()) {
             $account->forceFill([
                 'status' => WhatsAppAccountStatus::Error,
                 'error_message' => 'A phone number id and an access token are required.',

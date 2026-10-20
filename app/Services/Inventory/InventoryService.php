@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace App\Services\Inventory;
 
 use App\Enums\InventoryMovementType;
+use App\Enums\NotificationSeverity;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\Inventory;
 use App\Models\InventoryMovement;
+use App\Models\Order;
 use App\Models\ProductVariant;
 use App\Models\Store;
+use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Notifications\NotificationEventCatalog as Events;
+use App\Services\Notifications\NotificationIntent;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -24,7 +29,10 @@ use Illuminate\Support\Facades\DB;
  */
 class InventoryService
 {
-    public function __construct(private readonly TenantContext $tenants) {}
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly NotificationDispatcher $notifications,
+    ) {}
 
     /**
      * Get (or create) the inventory row for a variant in a store.
@@ -69,7 +77,7 @@ class InventoryService
             throw BusinessRuleViolation::because('A movement quantity must not be zero.');
         }
 
-        return DB::transaction(function () use ($inventory, $type, $quantity, $note, $referenceType, $referenceId, $userId, $enforceAvailability): InventoryMovement {
+        $movement = DB::transaction(function () use ($inventory, $type, $quantity, $note, $referenceType, $referenceId, $userId, $enforceAvailability): InventoryMovement {
             // Lock the row so two concurrent orders cannot both read the same
             // "available" figure and oversell the variant.
             $locked = Inventory::query()->lockForUpdate()->findOrFail($inventory->getKey());
@@ -110,6 +118,16 @@ class InventoryService
                 'created_at' => now(),
             ]);
         });
+
+        // Evaluated once the movement committed, and only when nothing wrapped
+        // this call in a wider transaction — inside an order transition the
+        // caller re-checks after its own commit, so a single shipment does not
+        // raise the same alert from every movement it performs.
+        if (DB::transactionLevel() === 0) {
+            $this->evaluateLowStock($inventory);
+        }
+
+        return $movement;
     }
 
     /**
@@ -175,7 +193,7 @@ class InventoryService
         ?int $referenceId = null,
         ?int $userId = null,
     ): InventoryMovement {
-        return DB::transaction(function () use ($inventory, $quantity, $note, $referenceType, $referenceId, $userId): InventoryMovement {
+        $movement = DB::transaction(function () use ($inventory, $quantity, $note, $referenceType, $referenceId, $userId): InventoryMovement {
             $locked = Inventory::query()->lockForUpdate()->findOrFail($inventory->getKey());
 
             if ($locked->quantity < $quantity) {
@@ -208,6 +226,12 @@ class InventoryService
                 'created_at' => now(),
             ]);
         });
+
+        if (DB::transactionLevel() === 0) {
+            $this->evaluateLowStock($inventory);
+        }
+
+        return $movement;
     }
 
     /**
@@ -239,6 +263,60 @@ class InventoryService
                 ])->save();
             }
         });
+    }
+
+    /**
+     * Raise a low-stock alert if this row has fallen to or below its threshold.
+     *
+     * The dispatcher's per-recipient cooldown is what stops a busy day becoming
+     * one email per order; this method only decides *whether* the row is low,
+     * never how often the merchant is told.
+     */
+    public function evaluateLowStock(Inventory $inventory): void
+    {
+        $fresh = Inventory::query()->with(['product', 'store'])->find($inventory->getKey());
+
+        if (! $fresh instanceof Inventory || $fresh->low_stock_threshold === null) {
+            return;
+        }
+
+        if ($fresh->quantity > $fresh->low_stock_threshold) {
+            return;
+        }
+
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: Events::TENANT_INVENTORY_LOW_STOCK,
+            tenantId: (int) $fresh->tenant_id,
+            dedupeKey: 'tenant.inventory.low_stock:'.$fresh->getKey(),
+            data: [
+                'product' => $fresh->product?->name ?? 'A product',
+                'quantity' => $fresh->quantity,
+                'threshold' => $fresh->low_stock_threshold,
+                'store' => $fresh->store?->name ?? '',
+            ],
+            actionUrl: '/inventory',
+            actorId: auth()->id(),
+            severity: $fresh->quantity <= 0 ? NotificationSeverity::Critical : NotificationSeverity::Warning,
+        ));
+    }
+
+    /**
+     * Re-check every inventory row an order touched. Called by the order
+     * service after its transaction committed, because inside that transaction
+     * the individual movements deliberately defer their own check.
+     */
+    public function evaluateLowStockForOrder(Order $order): void
+    {
+        foreach ($order->items as $item) {
+            $inventory = Inventory::query()
+                ->where('store_id', $order->store_id)
+                ->where('product_variant_id', $item->product_variant_id)
+                ->first();
+
+            if ($inventory instanceof Inventory) {
+                $this->evaluateLowStock($inventory);
+            }
+        }
     }
 
     /**

@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Profile\UpdateNotificationPreferencesRequest;
+use App\Services\Notifications\ChannelAvailability;
 use App\Services\Profile\ProfileService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -20,11 +21,25 @@ use Illuminate\Http\Request;
  */
 class NotificationPreferenceController extends Controller
 {
-    public function __construct(private readonly ProfileService $profiles) {}
+    public function __construct(
+        private readonly ProfileService $profiles,
+        private readonly ChannelAvailability $availability,
+    ) {}
 
     public function show(Request $request): JsonResponse
     {
         return ApiResponse::success('', $request->user()->notificationPreferences());
+    }
+
+    /**
+     * Which channels this installation can actually send on, so the settings
+     * screen can disable a switch for a channel with no working transport
+     * instead of letting a user believe they have opted into something that
+     * never sends.
+     */
+    public function channels(): JsonResponse
+    {
+        return ApiResponse::success('', $this->availability->summary());
     }
 
     public function update(UpdateNotificationPreferencesRequest $request): JsonResponse

@@ -8,6 +8,7 @@ use App\Enums\RoleScope;
 use App\Enums\UserStatus;
 use App\Http\Requests\ApiRequest;
 use App\Models\Role;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\Validator;
@@ -19,10 +20,14 @@ use Illuminate\Validation\Validator;
  * through the Fortify endpoint, which requires the current password.
  *
  * A replacement role is locked to tenant scope: reassigning a platform role
- * would elevate a team member to Dukavo staff from inside the workspace.
+ * would elevate a team member to Dukavo staff from inside the workspace. It is
+ * also locked to this workspace, so another tenant's custom role cannot be
+ * smuggled in by id.
  */
 class UpdateUserRequest extends ApiRequest
 {
+    public function __construct(private readonly TenantContext $tenants) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -53,6 +58,16 @@ class UpdateUserRequest extends ApiRequest
                     'role_id',
                     'Only tenant roles can be assigned to workspace team members.',
                 );
+
+                return;
+            }
+
+            if (
+                $role !== null
+                && $role->tenant_id !== null
+                && $role->tenant_id !== $this->tenants->tenant()?->getKey()
+            ) {
+                $validator->errors()->add('role_id', 'That role belongs to another workspace.');
             }
         });
     }

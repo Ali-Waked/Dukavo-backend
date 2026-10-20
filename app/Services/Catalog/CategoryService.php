@@ -103,6 +103,10 @@ class CategoryService
     {
         $categories = Category::query()
             ->when($onlyActive, fn ($query) => $query->active())
+            // The tree renders a product count per node, so it is counted here
+            // rather than left to each node to query on its own. Soft-deleted
+            // products and other tenants' rows are excluded by the relation.
+            ->withCount('products')
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();

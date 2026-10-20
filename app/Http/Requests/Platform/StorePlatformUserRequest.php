@@ -29,7 +29,7 @@ class StorePlatformUserRequest extends ApiRequest
             'name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'email:rfc', 'max:190', 'lowercase', Rule::unique('users', 'email')],
             'phone' => ['nullable', 'string', 'max:32'],
-            'password' => ['nullable', 'string', 'min:12'],
+            'password' => ['nullable', 'string', 'min:12', 'confirmed'],
             'locale' => ['nullable', 'string', 'max:10'],
             'role_id' => ['required', 'integer', Rule::exists('roles', 'id')],
         ];

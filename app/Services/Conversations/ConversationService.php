@@ -10,6 +10,9 @@ use App\Enums\MessageType;
 use App\Models\Conversation;
 use App\Models\ConversationMessage;
 use App\Models\Customer;
+use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Notifications\NotificationEventCatalog as Events;
+use App\Services\Notifications\NotificationIntent;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +26,8 @@ use Illuminate\Support\Facades\DB;
  */
 class ConversationService
 {
+    public function __construct(private readonly NotificationDispatcher $notifications) {}
+
     /**
      * Find the open thread for a channel identity, or start a new one.
      *
@@ -39,7 +44,9 @@ class ConversationService
             ->first();
 
         if ($existing !== null) {
-            $existing->forceFill(['last_message_at' => now()])->save();
+            $existing->forceFill(
+                ['last_message_at' => now()] + $this->channelBinding($existing, $attributes),
+            )->save();
 
             return $existing;
         }
@@ -54,15 +61,44 @@ class ConversationService
                 'assigned_to' => $attributes['assigned_to'] ?? null,
             ]);
 
-            // `last_message_at` and `meta` are maintained by the service, so they
-            // are written explicitly rather than exposed to mass assignment.
+            // `last_message_at`, `meta` and the channel binding are maintained by
+            // the service, so they are written explicitly rather than exposed to
+            // mass assignment.
             $conversation->forceFill([
                 'last_message_at' => now(),
                 'meta' => $attributes['meta'] ?? null,
-            ])->save();
+            ] + $this->channelBinding($conversation, $attributes))->save();
 
             return $conversation;
         });
+    }
+
+    /**
+     * Channel bindings a caller may attach to a thread, and only once.
+     *
+     * `whatsapp_account_id` fixes which number owns the thread and `store_id`
+     * which shop it belongs to. Both are backfilled for threads opened before
+     * the binding existed and never moved afterwards: a conversation that could
+     * be re-pointed would let a reply leave from a store or a number the customer
+     * never contacted.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function channelBinding(Conversation $conversation, array $attributes): array
+    {
+        $binding = [];
+
+        foreach (['whatsapp_account_id', 'store_id'] as $key) {
+            if (array_key_exists($key, $attributes)
+                && $conversation->getAttribute($key) === null
+                && filled($attributes[$key])
+            ) {
+                $binding[$key] = $attributes[$key];
+            }
+        }
+
+        return $binding;
     }
 
     /**
@@ -110,7 +146,7 @@ class ConversationService
      */
     public function addMessage(Conversation $conversation, MessageDirection $direction, array $attributes): ConversationMessage
     {
-        return DB::transaction(function () use ($conversation, $direction, $attributes): ConversationMessage {
+        $message = DB::transaction(function () use ($conversation, $direction, $attributes): ConversationMessage {
             $values = [
                 'user_id' => $attributes['user_id'] ?? null,
                 'type' => $attributes['type'] ?? MessageType::Text,
@@ -141,6 +177,44 @@ class ConversationService
 
             return $message;
         });
+
+        // Only a genuinely new inbound message alerts the inbox: an outbound
+        // reply is the merchant's own action, and a redelivered webhook updates
+        // an existing row rather than creating one.
+        if ($direction === MessageDirection::Inbound && $message->wasRecentlyCreated) {
+            $this->notifyInboundMessage($conversation, $message);
+        }
+
+        return $message;
+    }
+
+    private function notifyInboundMessage(Conversation $conversation, ConversationMessage $message): void
+    {
+        $conversation->loadMissing('customer');
+        $customer = $conversation->customer;
+        $name = $customer?->name ?: 'A customer';
+
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: Events::TENANT_CONVERSATION_MESSAGE_RECEIVED,
+            tenantId: (int) $conversation->tenant_id,
+            dedupeKey: 'tenant.conversation.message_received:'.$message->getKey(),
+            data: [
+                'customer' => $name,
+                'preview' => $this->preview($message->body),
+            ],
+            actionUrl: '/conversations',
+        ));
+    }
+
+    private function preview(?string $body): string
+    {
+        $body = trim((string) $body);
+
+        if ($body === '') {
+            return 'New message';
+        }
+
+        return mb_strlen($body) > 120 ? mb_substr($body, 0, 117).'…' : $body;
     }
 
     /**

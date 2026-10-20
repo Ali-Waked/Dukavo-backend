@@ -14,6 +14,7 @@ use App\Http\Requests\Roles\SyncRolePermissionsRequest;
 use App\Http\Requests\Roles\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
 use App\Models\Role;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Rbac\PermissionService;
@@ -21,6 +22,7 @@ use App\Services\Rbac\RoleService;
 use App\Support\ApiResponse;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -29,14 +31,16 @@ use Illuminate\Http\Response;
 /**
  * Roles and their permission sets.
  *
- * Which roles a caller may see depends on where they are: inside a tenant only
- * tenant scoped roles are actionable, while platform operators see the whole
- * catalogue. The filter is applied once, here, rather than per route.
+ * Which roles a caller may see depends on where they are. Inside a tenant the
+ * visible set is the global system templates plus the roles that workspace
+ * created; a custom role owned by another tenant is a 404, never a readable
+ * row. In platform mode the catalogue is the global roles only (platform roles
+ * and the system tenant templates); a merchant's custom roles are not Dukavo's
+ * to manage.
  *
- * Every mutation is audited. A role has no tenant of its own, so the audit
- * row lands in the caller's current scope: the active tenant's trail when the
- * request ran through the tenant group, the platform trail when it ran through
- * the platform group.
+ * Every mutation is audited. The audit row lands in the caller's current scope:
+ * the active tenant's trail when the request ran through the tenant group, the
+ * platform trail when it ran through the platform group.
  */
 class RoleController extends Controller
 {
@@ -49,12 +53,18 @@ class RoleController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $tenantId = $this->tenants->id();
+        $tenant = $this->tenants->tenant();
 
         $roles = Role::query()
-            ->where(fn ($query) => $query
-                ->platformScoped()
-                ->orWhere('scope', RoleScope::Tenant->value))
+            ->when(
+                $tenant !== null,
+                // Inside a workspace: the shared system templates plus this
+                // tenant's own custom roles, never another tenant's.
+                fn ($query) => $query->visibleToTenant($tenant->getKey()),
+                // Platform catalogue: global roles only. Tenant owned roles are
+                // a merchant's, not Dukavo's, and never appear here.
+                fn ($query) => $query->whereNull('tenant_id'),
+            )
             ->when($request->filled('scope'), fn ($query) => $query->where('scope', $request->string('scope')->toString()))
             ->when($request->filled('search'), fn ($query) => $query->where('name', 'like', '%'.$request->string('search')->toString().'%'))
             ->with('permissions')
@@ -62,21 +72,22 @@ class RoleController extends Controller
             ->orderBy('name')
             ->get();
 
-        // A merchant may only see tenant roles while acting inside a tenant.
-        if ($tenantId !== null) {
-            $roles = $roles->filter(fn (Role $role): bool => $role->scope === RoleScope::Tenant);
-        }
-
         return RoleResource::collection($roles);
     }
 
     public function store(StoreRoleRequest $request): JsonResponse
     {
+        $scope = RoleScope::from($request->validated('scope'));
+
         $role = $this->roles->createRole(
             name: $request->validated('name'),
-            scope: RoleScope::from($request->validated('scope')),
+            scope: $scope,
             description: $request->validated('description'),
             permissionSlugs: $request->validated('permissions', []),
+            // A platform role is global; a tenant role is owned by the
+            // workspace the request is running in.
+            tenant: $scope === RoleScope::Tenant ? $this->tenants->required() : null,
+            actor: $request->user(),
         );
 
         $this->audit->record(AuditAction::Created, $role, [
@@ -92,7 +103,7 @@ class RoleController extends Controller
 
     public function show(Request $request, Role $role): RoleResource
     {
-        $this->assertPlatformRoleIsManageable($role, $request->user());
+        $this->assertRoleIsManageable($role, $request->user());
 
         $role->load('permissions');
 
@@ -101,10 +112,10 @@ class RoleController extends Controller
 
     public function update(UpdateRoleRequest $request, Role $role): RoleResource
     {
-        $this->assertPlatformRoleIsManageable($role, $request->user());
+        $this->assertRoleIsManageable($role, $request->user());
 
         $before = $role->only(['name', 'description']);
-        $updated = $this->roles->updateRole($role, $request->validated());
+        $updated = $this->roles->updateRole($role, $request->validated(), $request->user());
         $after = $updated->only(['name', 'description']);
 
         $this->audit->recordChanges(AuditAction::Updated, $role, $before, $after);
@@ -114,7 +125,7 @@ class RoleController extends Controller
 
     public function destroy(Request $request, Role $role): Response
     {
-        $this->assertPlatformRoleIsManageable($role, $request->user());
+        $this->assertRoleIsManageable($role, $request->user());
 
         $this->audit->record(AuditAction::Deleted, $role, [
             'new' => ['name' => $role->name, 'scope' => $role->scope->value],
@@ -131,12 +142,12 @@ class RoleController extends Controller
      */
     public function syncPermissions(SyncRolePermissionsRequest $request, Role $role): JsonResponse
     {
-        $this->assertPlatformRoleIsManageable($role, $request->user());
+        $this->assertRoleIsManageable($role, $request->user());
 
         $before = $role->load('permissions')->permissions->pluck('slug')->sort()->values()->all();
 
         $role = $this->roles
-            ->syncPermissions($role, $request->validated('permissions'))
+            ->syncPermissions($role, $request->validated('permissions'), $request->user(), $role->tenant)
             ->load('permissions');
 
         $after = $role->permissions->pluck('slug')->sort()->values()->all();
@@ -155,7 +166,7 @@ class RoleController extends Controller
      */
     public function assign(AssignRoleRequest $request, Role $role): JsonResponse
     {
-        $this->assertPlatformRoleIsManageable($role, $request->user());
+        $this->assertRoleIsManageable($role, $request->user());
 
         /** @var User $user */
         $user = User::query()->findOrFail($request->validated('user_id'));
@@ -176,7 +187,7 @@ class RoleController extends Controller
      */
     public function revoke(RevokeRoleRequest $request, Role $role): JsonResponse
     {
-        $this->assertPlatformRoleIsManageable($role, $request->user());
+        $this->assertRoleIsManageable($role, $request->user());
 
         /** @var User $user */
         $user = User::query()->findOrFail($request->validated('user_id'));
@@ -187,20 +198,37 @@ class RoleController extends Controller
     }
 
     /**
-     * Platform scoped roles are Dukavo's own, never a tenant's. Route model
-     * binding resolves a role by id alone, so without this check a merchant
-     * who reached a platform role by id could edit it — or, through `assign`,
-     * grant themselves a platform role. Every action in this controller runs
-     * inside the tenant group, so one check here covers all of them.
+     * Route model binding resolves a role by id alone, so the id is not proof
+     * of anything. Two boundaries are enforced here for every action:
+     *
+     *  - platform roles are Dukavo's own; only a platform operator may touch
+     *    one, otherwise a merchant reaching a role by id could edit it or, via
+     *    `assign`, grant themselves a platform role;
+     *  - a custom tenant role is owned by exactly one workspace; from any other
+     *    workspace it is a 404, so the endpoint never confirms it exists.
+     *
+     * Global system templates (`tenant_id` NULL) fall through: they are shared
+     * by every workspace and the route's `permission:` middleware is the guard
+     * on who may change them.
      */
-    private function assertPlatformRoleIsManageable(Role $role, ?User $user): void
+    private function assertRoleIsManageable(Role $role, ?User $user): void
     {
-        if ($role->scope !== RoleScope::Platform) {
+        if ($role->scope === RoleScope::Platform) {
+            if ($user === null || ! $this->permissions->isPlatformOperator($user)) {
+                throw new AuthorizationException('Platform roles can only be managed by Dukavo platform administrators.');
+            }
+
             return;
         }
 
-        if ($user === null || ! $this->permissions->isPlatformOperator($user)) {
-            throw new AuthorizationException('Platform roles can only be managed by Dukavo platform administrators.');
+        if ($role->tenant_id === null) {
+            return;
+        }
+
+        $tenant = $this->tenants->tenant();
+
+        if ($tenant === null || $role->tenant_id !== $tenant->getKey()) {
+            throw (new ModelNotFoundException)->setModel(Role::class, [$role->getKey()]);
         }
     }
 }

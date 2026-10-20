@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Orders;
 
 use App\Enums\InventoryMovementType;
+use App\Enums\NotificationSeverity;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Exceptions\BusinessRuleViolation;
@@ -17,6 +18,9 @@ use App\Models\ProductVariant;
 use App\Models\Store;
 use App\Models\Tenant;
 use App\Services\Inventory\InventoryService;
+use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Notifications\NotificationEventCatalog as Events;
+use App\Services\Notifications\NotificationIntent;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -34,6 +38,7 @@ class OrderService
     public function __construct(
         private readonly InventoryService $inventory,
         private readonly TenantContext $tenants,
+        private readonly NotificationDispatcher $notifications,
     ) {}
 
     /**
@@ -44,7 +49,7 @@ class OrderService
         $tenant = $this->tenants->required();
         $store = $this->resolveStore($attributes['store_id'] ?? null);
 
-        return DB::transaction(function () use ($tenant, $store, $attributes): Order {
+        $order = DB::transaction(function () use ($tenant, $store, $attributes): Order {
             $customer = isset($attributes['customer_id'])
                 ? Customer::query()->findOrFail($attributes['customer_id'])
                 : null;
@@ -80,6 +85,21 @@ class OrderService
 
             return $order->load(['items', 'store', 'customer', 'statusHistory']);
         });
+
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: Events::TENANT_ORDER_CREATED,
+            tenantId: (int) $order->tenant_id,
+            dedupeKey: 'tenant.order.created:'.$order->getKey(),
+            data: [
+                'order_number' => $order->order_number,
+                'customer' => $order->customer_name ?: 'A customer',
+                'total' => $this->formatMoney($order->grand_total, $order->currency),
+            ],
+            actionUrl: '/orders/'.$order->order_number,
+            actorId: auth()->id(),
+        ));
+
+        return $order;
     }
 
     /**
@@ -257,7 +277,9 @@ class OrderService
             ));
         }
 
-        return DB::transaction(function () use ($order, $status, $note): Order {
+        $from = $order->status;
+
+        $order = DB::transaction(function () use ($order, $status, $note): Order {
             $from = $order->status;
             $attributes = ['status' => $status];
 
@@ -291,6 +313,30 @@ class OrderService
 
             return $order->load(['items.variant', 'store', 'customer', 'statusHistory']);
         });
+
+        // Low stock is re-checked after the stock side effects committed: a
+        // shipment that drew a line below its threshold should raise one alert
+        // once, not once per stock movement inside the transaction.
+        if (in_array($status, [OrderStatus::Shipped, OrderStatus::Cancelled], true)) {
+            $this->inventory->evaluateLowStockForOrder($order);
+        }
+
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: Events::TENANT_ORDER_STATUS_CHANGED,
+            tenantId: (int) $order->tenant_id,
+            dedupeKey: 'tenant.order.status_changed:'.$order->getKey().':'.$status->value,
+            data: [
+                'order_number' => $order->order_number,
+                'status' => $status->label(),
+                'from' => $from->label(),
+                'to' => $status->label(),
+            ],
+            actionUrl: '/orders/'.$order->order_number,
+            actorId: auth()->id(),
+            severity: $this->severityForStatus($status),
+        ));
+
+        return $order;
     }
 
     /**
@@ -373,6 +419,24 @@ class OrderService
      * Orders in different stores are numbered independently, which is fine for
      * an internal reference and keeps the lock short.
      */
+    /**
+     * A cancelled order is a warning the merchant should look at; a delivered
+     * one is good news. Everything else is neutral.
+     */
+    private function severityForStatus(OrderStatus $status): NotificationSeverity
+    {
+        return match ($status) {
+            OrderStatus::Cancelled => NotificationSeverity::Warning,
+            OrderStatus::Delivered => NotificationSeverity::Success,
+            default => NotificationSeverity::Info,
+        };
+    }
+
+    private function formatMoney(mixed $amount, ?string $currency): string
+    {
+        return number_format((float) $amount, 2).' '.strtoupper((string) $currency);
+    }
+
     private function nextOrderNumber(Store $store): string
     {
         $padding = (int) config('dukavo.order_number.padding', 6);

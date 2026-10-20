@@ -10,6 +10,9 @@ use App\Models\Role;
 use App\Models\Store;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Notifications\NotificationEventCatalog as Events;
+use App\Services\Notifications\NotificationIntent;
 use App\Services\Rbac\PermissionService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Collection;
@@ -29,6 +32,7 @@ class TenantService
     public function __construct(
         private readonly PermissionService $permissions,
         private readonly TenantContext $tenants,
+        private readonly NotificationDispatcher $notifications,
     ) {}
 
     /**
@@ -141,7 +145,7 @@ class TenantService
      */
     public function provisionFor(User $user, array $attributes): Tenant
     {
-        return DB::transaction(function () use ($user, $attributes): Tenant {
+        $tenant = DB::transaction(function () use ($user, $attributes): Tenant {
             $attributes['contact_email'] ??= $user->email;
 
             // createTenant() and addUser() open nested transactions, which
@@ -154,6 +158,20 @@ class TenantService
 
             return $tenant;
         });
+
+        // Announced only after the workspace really exists, and only to
+        // platform operators: the new owner is not told about their own signup.
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: Events::PLATFORM_TENANT_ONBOARDED,
+            dedupeKey: 'platform.tenant.onboarded:'.$tenant->getKey(),
+            data: [
+                'name' => $user->name,
+                'tenant' => $tenant->name,
+            ],
+            actionUrl: '/tenants',
+        ));
+
+        return $tenant;
     }
 
     /**

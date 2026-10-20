@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Catalog;
 
+use App\Enums\InventoryMovementType;
 use App\Enums\ProductStatus;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
+use App\Services\Inventory\InventoryService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
@@ -27,7 +29,10 @@ use Illuminate\Validation\ValidationException;
  */
 class ProductService
 {
-    public function __construct(private readonly TenantContext $tenants) {}
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly InventoryService $inventory,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $attributes
@@ -39,7 +44,10 @@ class ProductService
         try {
             return DB::transaction(function () use ($tenant, $attributes): Product {
                 $category = $this->resolveCategory($attributes['category_id'] ?? null);
-                $store = $this->resolveStore($attributes['store_id'] ?? null);
+                // A null store means "available everywhere"; stock still has to
+                // live in a concrete store, so opening stock goes to the
+                // tenant's default store. A tenant always owns one.
+                $store = $this->resolveStore($attributes['store_id'] ?? null) ?? $this->defaultStore();
 
                 // A slug the merchant chose is honoured exactly; only when they
                 // leave it blank does the platform derive one from the name.
@@ -65,7 +73,8 @@ class ProductService
                     'is_taxable' => $attributes['is_taxable'] ?? true,
                 ]);
 
-                $this->syncVariants($product, $attributes['variants'] ?? []);
+                $variants = $this->syncVariants($product, $attributes['variants'] ?? []);
+                $this->initializeStock($store, $variants, $attributes['variants'] ?? []);
 
                 return $product->load(['variants', 'images', 'category']);
             });
@@ -105,7 +114,8 @@ class ProductService
                 }
 
                 if (array_key_exists('variants', $attributes)) {
-                    $this->syncVariants($product, $attributes['variants']);
+                    $variants = $this->syncVariants($product, $attributes['variants']);
+                    $this->ensureInventoryRows($product, $variants);
                     unset($attributes['variants']);
                 }
 
@@ -159,9 +169,14 @@ class ProductService
      * Replace the variant set. Variants referenced by an order item are
      * updated rather than removed, because order history must stay intact.
      *
+     * Returns the persisted variants in position order, so the caller can pair
+     * them back with the submitted array (same index) when handling opening
+     * stock on creation.
+     *
      * @param  array<int, array<string, mixed>>  $variants
+     * @return Collection<int, ProductVariant>
      */
-    private function syncVariants(Product $product, array $variants): void
+    private function syncVariants(Product $product, array $variants): Collection
     {
         if ($variants === []) {
             $variants = [[
@@ -176,6 +191,7 @@ class ProductService
         $existing = $product->variants()->get()->keyBy('id');
         $keepIds = [];
         $position = 0;
+        $persisted = new Collection;
 
         foreach ($variants as $variant) {
             $position++;
@@ -192,13 +208,16 @@ class ProductService
             ];
 
             if ($id !== null && $existing->has((int) $id)) {
-                $existing->get((int) $id)?->update($payload);
+                $model = $existing->get((int) $id);
+                $model->update($payload);
+                $persisted->push($model);
                 $keepIds[] = (int) $id;
 
                 continue;
             }
 
             $created = $product->variants()->create($payload);
+            $persisted->push($created);
             $keepIds[] = $created->getKey();
         }
 
@@ -209,6 +228,80 @@ class ProductService
             ->delete();
 
         $this->ensureSingleDefault($product->fresh());
+
+        return $persisted;
+    }
+
+    /**
+     * Seed an inventory row for every variant and post any opening quantity to
+     * the ledger. Rows are created even for zero stock so a freshly listed
+     * product is visible on the inventory screens rather than missing until its
+     * first movement.
+     *
+     * @param  Collection<int, ProductVariant>  $variants
+     * @param  array<int, array<string, mixed>>  $inputs  The submitted variants, index-aligned with $variants
+     */
+    private function initializeStock(?Store $store, Collection $variants, array $inputs): void
+    {
+        if ($store === null) {
+            return;
+        }
+
+        foreach ($variants->values() as $index => $variant) {
+            $inventory = $this->inventory->findOrCreate($store, $variant);
+
+            $opening = (int) ($inputs[$index]['initial_quantity'] ?? 0);
+
+            if ($opening > 0) {
+                $this->inventory->applyMovement(
+                    $inventory,
+                    InventoryMovementType::Initial,
+                    $opening,
+                    'Opening stock',
+                );
+            }
+        }
+    }
+
+    /**
+     * Make sure every persisted variant has an inventory row in each store that
+     * already holds this product. A variant added during an edit is otherwise
+     * invisible on the inventory screens until its first movement, even though
+     * the product detail screen already lists it.
+     *
+     * @param  Collection<int, ProductVariant>  $variants
+     */
+    private function ensureInventoryRows(Product $product, Collection $variants): void
+    {
+        foreach ($this->stockedStores($product) as $store) {
+            foreach ($variants as $variant) {
+                $this->inventory->findOrCreate($store, $variant);
+            }
+        }
+    }
+
+    /**
+     * Stores that already hold stock for this product, falling back to the
+     * product's home store (or the tenant default) so a product that has never
+     * been stocked still receives opening rows for a newly added variant.
+     *
+     * @return Collection<int, Store>
+     */
+    private function stockedStores(Product $product): Collection
+    {
+        $stores = Store::query()
+            ->whereIn('id', $product->inventories()->select('store_id'))
+            ->get();
+
+        if ($stores->isNotEmpty()) {
+            return $stores;
+        }
+
+        $fallback = $product->store_id !== null
+            ? Store::query()->find($product->store_id)
+            : $this->defaultStore();
+
+        return $fallback === null ? collect() : collect([$fallback]);
     }
 
     private function ensureSingleDefault(Product $product): void
@@ -221,11 +314,18 @@ class ProductService
 
         $default = $variants->firstWhere('is_default', true) ?? $variants->first();
 
+        // Demote every *other* variant, then ensure the chosen one is set. The
+        // chosen variant is excluded from the bulk update because resetting it
+        // to false first would leave `save()` with nothing dirty to write when
+        // it was already the default — the row would stay false.
         ProductVariant::query()
             ->where('product_id', $product->getKey())
+            ->whereKeyNot($default->getKey())
             ->update(['is_default' => false]);
 
-        $default->forceFill(['is_default' => true])->save();
+        if (! $default->is_default) {
+            $default->forceFill(['is_default' => true])->save();
+        }
     }
 
     /**
@@ -251,6 +351,19 @@ class ProductService
 
         return Store::query()->find($storeId)
             ?? throw BusinessRuleViolation::because('The selected store does not exist.');
+    }
+
+    /**
+     * The store a product with no explicit store stocks into. Falls back to the
+     * tenant's oldest store when none is flagged default, so opening stock is
+     * never silently dropped. Tenant scoping keeps this within the active tenant.
+     */
+    private function defaultStore(): ?Store
+    {
+        return Store::query()
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->first();
     }
 
     /**
