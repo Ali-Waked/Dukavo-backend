@@ -10,6 +10,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 /**
@@ -124,6 +125,57 @@ class TenantUserManagementTest extends TestCase
         $this->actingInTenant($this->merchant)
             ->deleteJson("/api/v1/tenant/users/{$created}")
             ->assertNoContent();
+    }
+
+    public function test_a_team_member_can_be_created_with_a_confirmed_password(): void
+    {
+        $role = Role::query()->where('slug', 'staff')->firstOrFail();
+
+        $response = $this->actingInTenant($this->merchant)
+            ->postJson('/api/v1/tenant/users', [
+                'name' => 'Nadia Haddad',
+                'email' => 'nadia-with-password@urban-basket.test',
+                'password' => 'StrongPassword123',
+                'password_confirmation' => 'StrongPassword123',
+                'role_id' => $role->getKey(),
+            ])
+            ->assertCreated();
+
+        $user = User::query()->where('email', 'nadia-with-password@urban-basket.test')->firstOrFail();
+
+        $this->assertTrue(Hash::check('StrongPassword123', $user->password));
+        $this->assertArrayNotHasKey('password', $response->json('data'));
+    }
+
+    public function test_a_mismatched_password_confirmation_is_refused(): void
+    {
+        $this->actingInTenant($this->merchant)
+            ->postJson('/api/v1/tenant/users', [
+                'name' => 'Confused User',
+                'email' => 'confused@urban-basket.test',
+                'password' => 'StrongPassword123',
+                'password_confirmation' => 'SomethingElse456',
+                'role_id' => Role::query()->where('slug', 'staff')->firstOrFail()->getKey(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('password');
+
+        $this->assertDatabaseMissing('users', ['email' => 'confused@urban-basket.test']);
+    }
+
+    public function test_a_missing_password_confirmation_is_refused(): void
+    {
+        $this->actingInTenant($this->merchant)
+            ->postJson('/api/v1/tenant/users', [
+                'name' => 'Lonely Password',
+                'email' => 'lonely-password@urban-basket.test',
+                'password' => 'StrongPassword123',
+                'role_id' => Role::query()->where('slug', 'staff')->firstOrFail()->getKey(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('password');
+
+        $this->assertDatabaseMissing('users', ['email' => 'lonely-password@urban-basket.test']);
     }
 
     public function test_a_platform_operator_can_still_manage_a_team_member(): void

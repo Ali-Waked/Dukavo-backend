@@ -17,6 +17,7 @@ use App\Services\Conversations\ConversationService;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
@@ -62,21 +63,45 @@ class WhatsappWebhookTest extends TestCase
             'webhook_verify_token' => 'verify-me',
         ]);
 
+        // Meta signs every delivery with the App Secret. The webhook fails closed
+        // without it, so the tests set one and sign each payload they send.
+        config()->set('services.whatsapp.app_secret', 'test-app-secret');
+
         $this->conversations = app(ConversationService::class);
     }
 
     public function test_the_handshake_echoes_the_challenge_for_a_known_token(): void
     {
-        $this->getJson('/api/v1/webhooks/whatsapp?'.http_build_query([
+        $this->get('/api/v1/webhooks/whatsapp?'.http_build_query([
             'hub.mode' => 'subscribe',
             'hub.verify_token' => 'verify-me',
             'hub.challenge' => '1158201444',
-        ]))->assertOk()->assertExactJson(['hub.challenge' => '1158201444']);
+        ]))->assertOk()->assertContent('1158201444');
+    }
+
+    public function test_the_handshake_accepts_the_environment_token(): void
+    {
+        config()->set('services.whatsapp.webhook_verify_token', 'platform-token');
+
+        $this->get('/api/v1/webhooks/whatsapp?'.http_build_query([
+            'hub.mode' => 'subscribe',
+            'hub.verify_token' => 'platform-token',
+            'hub.challenge' => '77',
+        ]))->assertOk()->assertContent('77');
+    }
+
+    public function test_the_handshake_requires_the_subscribe_mode(): void
+    {
+        $this->get('/api/v1/webhooks/whatsapp?'.http_build_query([
+            'hub.mode' => 'unsubscribe',
+            'hub.verify_token' => 'verify-me',
+            'hub.challenge' => '1158201444',
+        ]))->assertForbidden();
     }
 
     public function test_the_handshake_is_refused_for_an_unknown_token(): void
     {
-        $this->getJson('/api/v1/webhooks/whatsapp?'.http_build_query([
+        $this->get('/api/v1/webhooks/whatsapp?'.http_build_query([
             'hub.mode' => 'subscribe',
             'hub.verify_token' => 'not-my-token',
             'hub.challenge' => '1158201444',
@@ -85,7 +110,8 @@ class WhatsappWebhookTest extends TestCase
 
     public function test_the_handshake_never_returns_the_account_credentials(): void
     {
-        $response = $this->getJson('/api/v1/webhooks/whatsapp?'.http_build_query([
+        $response = $this->get('/api/v1/webhooks/whatsapp?'.http_build_query([
+            'hub.mode' => 'subscribe',
             'hub.verify_token' => 'verify-me',
             'hub.challenge' => '42',
         ]))->assertOk();
@@ -96,9 +122,56 @@ class WhatsappWebhookTest extends TestCase
         $this->assertStringNotContainsString('verify-me', $body);
     }
 
+    public function test_a_delivery_without_a_signature_is_refused(): void
+    {
+        Log::spy();
+
+        // Deliberately unsigned: this is the shape of an unauthenticated caller.
+        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+            'messages' => [[
+                'from' => '+15550000001', 'id' => 'wamid.NOSIG', 'type' => 'text', 'text' => ['body' => 'Forged'],
+            ]],
+        ]))->assertUnauthorized();
+
+        $this->assertSame(0, ConversationMessage::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_a_delivery_signed_with_the_wrong_secret_is_refused(): void
+    {
+        Log::spy();
+
+        $payload = $this->payload([
+            'messages' => [[
+                'from' => '+15550000002', 'id' => 'wamid.BADSIG', 'type' => 'text', 'text' => ['body' => 'Forged'],
+            ]],
+        ]);
+
+        $this->withHeader('X-Hub-Signature-256', 'sha256='.hash_hmac('sha256', json_encode($payload), 'not-the-secret'))
+            ->postJson('/api/v1/webhooks/whatsapp', $payload)
+            ->assertUnauthorized();
+
+        $this->assertSame(0, ConversationMessage::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_deliveries_are_refused_while_the_app_secret_is_unconfigured(): void
+    {
+        Log::spy();
+        config()->set('services.whatsapp.app_secret', null);
+
+        $this->postWebhook($this->payload([
+            'messages' => [[
+                'from' => '+15550000003', 'id' => 'wamid.NOSECRET', 'type' => 'text', 'text' => ['body' => 'Blind'],
+            ]],
+        ]))->assertForbidden();
+
+        // Failing closed is the whole point: an unverifiable signature must not
+        // become permission to write into a tenant's inbox.
+        $this->assertSame(0, ConversationMessage::query()->withoutGlobalScopes()->count());
+    }
+
     public function test_an_inbound_message_opens_a_conversation_and_records_the_message(): void
     {
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'messages' => [[
                 'from' => '+15551230001',
                 'id' => 'wamid.ABC',
@@ -130,6 +203,24 @@ class WhatsappWebhookTest extends TestCase
         $this->assertSame('meta', $message->meta['provider']);
     }
 
+    public function test_the_conversation_is_bound_to_the_number_it_arrived_on(): void
+    {
+        $this->postWebhook($this->payload([
+            'messages' => [[
+                'from' => '+15551230010', 'id' => 'wamid.BIND', 'type' => 'text', 'text' => ['body' => 'Hello'],
+            ]],
+        ]))->assertOk();
+
+        $conversation = Conversation::query()->withoutGlobalScopes()
+            ->where('tenant_id', $this->tenant->getKey())
+            ->firstOrFail();
+
+        // The binding is what keeps a reply on the same number the customer wrote
+        // to, which is the difference between correct and merely delivered.
+        $this->assertSame($this->account->getKey(), $conversation->whatsapp_account_id);
+        $this->assertSame($this->store->getKey(), $conversation->store_id);
+    }
+
     public function test_a_redelivered_message_is_not_stored_twice(): void
     {
         $payload = $this->payload([
@@ -141,8 +232,8 @@ class WhatsappWebhookTest extends TestCase
             ]],
         ]);
 
-        $this->postJson('/api/v1/webhooks/whatsapp', $payload)->assertOk();
-        $this->postJson('/api/v1/webhooks/whatsapp', $payload)->assertOk();
+        $this->postWebhook($payload)->assertOk();
+        $this->postWebhook($payload)->assertOk();
 
         $conversation = Conversation::query()->withoutGlobalScopes()
             ->where('tenant_id', $this->tenant->getKey())
@@ -157,13 +248,13 @@ class WhatsappWebhookTest extends TestCase
 
     public function test_two_messages_from_one_sender_share_a_conversation(): void
     {
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'messages' => [[
                 'from' => '+15551230003', 'id' => 'wamid.ONE', 'type' => 'text', 'text' => ['body' => 'One'],
             ]],
         ]))->assertOk();
 
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'messages' => [[
                 'from' => '+15551230003', 'id' => 'wamid.TWO', 'type' => 'text', 'text' => ['body' => 'Two'],
             ]],
@@ -186,7 +277,7 @@ class WhatsappWebhookTest extends TestCase
             'status' => 'active',
         ]));
 
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'messages' => [[
                 'from' => '+15551230004', 'id' => 'wamid.KNOWN', 'type' => 'text', 'text' => ['body' => 'Hi'],
             ]],
@@ -201,7 +292,7 @@ class WhatsappWebhookTest extends TestCase
 
     public function test_an_image_without_a_caption_has_no_body(): void
     {
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'messages' => [[
                 'from' => '+15551230005',
                 'id' => 'wamid.IMG',
@@ -220,7 +311,7 @@ class WhatsappWebhookTest extends TestCase
     {
         $message = $this->outboundMessage('wamid.OUT');
 
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'statuses' => [['id' => 'wamid.OUT', 'status' => 'sent', 'timestamp' => '1730000000']],
         ]))->assertOk();
 
@@ -228,14 +319,14 @@ class WhatsappWebhookTest extends TestCase
         // a failure either.
         $this->assertSame('sent', $message->fresh()->delivery_status);
 
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'statuses' => [['id' => 'wamid.OUT', 'status' => 'delivered', 'timestamp' => '1730000060']],
         ]))->assertOk();
 
         $this->assertSame('delivered', $message->fresh()->delivery_status);
 
         // Read is the next step, not a downgrade of delivered.
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'statuses' => [['id' => 'wamid.OUT', 'status' => 'read', 'timestamp' => '1730000120']],
         ]))->assertOk();
 
@@ -250,7 +341,7 @@ class WhatsappWebhookTest extends TestCase
     {
         $message = $this->outboundMessage('wamid.FAIL');
 
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'statuses' => [[
                 'id' => 'wamid.FAIL',
                 'status' => 'failed',
@@ -262,7 +353,7 @@ class WhatsappWebhookTest extends TestCase
         $this->assertSame('failed', $message->fresh()->delivery_status);
         $this->assertStringContainsString('undeliverable', (string) ($message->fresh()->meta['error'] ?? ''));
 
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'statuses' => [['id' => 'wamid.FAIL', 'status' => 'read', 'timestamp' => '1730000200']],
         ]))->assertOk();
 
@@ -270,7 +361,7 @@ class WhatsappWebhookTest extends TestCase
 
         // A late failure receipt for an already-read message must not walk the
         // delivery state backwards.
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'statuses' => [[
                 'id' => 'wamid.FAIL',
                 'status' => 'failed',
@@ -282,7 +373,7 @@ class WhatsappWebhookTest extends TestCase
         $this->assertSame('read', $message->fresh()->delivery_status);
 
         // The same is true of a delivered message.
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'statuses' => [['id' => 'wamid.FAIL', 'status' => 'delivered', 'timestamp' => '1730000400']],
         ]))->assertOk();
 
@@ -291,7 +382,7 @@ class WhatsappWebhookTest extends TestCase
 
     public function test_a_receipt_for_an_unknown_message_changes_nothing(): void
     {
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'statuses' => [['id' => 'wamid.NEVER-SENT', 'status' => 'read', 'timestamp' => '1730000000']],
         ]))->assertOk()->assertJsonPath('success', true);
 
@@ -302,7 +393,7 @@ class WhatsappWebhookTest extends TestCase
     {
         Log::spy();
 
-        $this->postJson('/api/v1/webhooks/whatsapp', [
+        $this->postWebhook([
             'entry' => [[
                 'changes' => [[
                     'value' => [
@@ -327,7 +418,7 @@ class WhatsappWebhookTest extends TestCase
     {
         Log::spy();
 
-        $this->postJson('/api/v1/webhooks/whatsapp', [
+        $this->postWebhook([
             'entry' => [['changes' => [['value' => ['messages' => []]]]]],
         ])->assertOk();
 
@@ -336,7 +427,7 @@ class WhatsappWebhookTest extends TestCase
 
     public function test_a_conversation_created_by_a_webhook_is_invisible_to_another_tenant(): void
     {
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'messages' => [[
                 'from' => '+15551230008', 'id' => 'wamid.SCOPE', 'type' => 'text', 'text' => ['body' => 'Private'],
             ]],
@@ -352,7 +443,7 @@ class WhatsappWebhookTest extends TestCase
     {
         $this->app['auth']->forgetGuards();
 
-        $this->postJson('/api/v1/webhooks/whatsapp', $this->payload([
+        $this->postWebhook($this->payload([
             'messages' => [[
                 'from' => '+15551230009', 'id' => 'wamid.ANON', 'type' => 'text', 'text' => ['body' => 'Anon'],
             ]],
@@ -363,7 +454,7 @@ class WhatsappWebhookTest extends TestCase
 
     public function test_a_garbled_payload_is_acknowledged_so_meta_stops_retrying(): void
     {
-        $this->postJson('/api/v1/webhooks/whatsapp', ['entry' => 'not-an-array-of-objects'])
+        $this->postWebhook(['entry' => 'not-an-array-of-objects'])
             ->assertOk()
             ->assertJsonPath('success', true);
     }
@@ -386,6 +477,22 @@ class WhatsappWebhookTest extends TestCase
                 ]],
             ]],
         ];
+    }
+
+    /**
+     * Post a payload exactly as Meta would: JSON bytes, signed with the App Secret.
+     *
+     * The signature covers the body, so it is computed over the same encoding
+     * `postJson` sends — a mismatch here would pass while production failed.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function postWebhook(array $payload): TestResponse
+    {
+        $signature = hash_hmac('sha256', json_encode($payload), (string) config('services.whatsapp.app_secret'));
+
+        return $this->withHeader('X-Hub-Signature-256', 'sha256='.$signature)
+            ->postJson('/api/v1/webhooks/whatsapp', $payload);
     }
 
     /**

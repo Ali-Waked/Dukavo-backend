@@ -218,6 +218,7 @@ class InventoryLedgerTest extends TestCase
             RoleScope::Tenant,
             'Read-only access to stock.',
             ['inventory.view'],
+            $this->tenant,
         );
 
         $viewer = $this->memberWithRole($this->tenant, $auditor);

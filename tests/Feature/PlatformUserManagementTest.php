@@ -81,6 +81,7 @@ class PlatformUserManagementTest extends TestCase
                 'email' => 'omar@dukavo.test',
                 'phone' => '+96170000000',
                 'password' => 'very-strong-password',
+                'password_confirmation' => 'very-strong-password',
                 'locale' => 'ar',
                 'role_id' => $this->platformRole()->getKey(),
             ])
@@ -96,6 +97,24 @@ class PlatformUserManagementTest extends TestCase
             'role_id' => $this->platformRole()->getKey(),
             'tenant_id' => null,
         ]);
+    }
+
+    public function test_a_platform_password_must_be_confirmed(): void
+    {
+        $superAdmin = $this->platformUser('super-admin');
+
+        $this->actingAs($superAdmin, 'sanctum')
+            ->postJson('/api/v1/platform/users', [
+                'name' => 'Omar Khoury',
+                'email' => 'omar-mismatch@dukavo.test',
+                'password' => 'very-strong-password',
+                'password_confirmation' => 'something-else-entirely',
+                'role_id' => $this->platformRole()->getKey(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('password');
+
+        $this->assertDatabaseMissing('users', ['email' => 'omar-mismatch@dukavo.test']);
     }
 
     public function test_a_tenant_role_cannot_be_granted_to_platform_staff(): void

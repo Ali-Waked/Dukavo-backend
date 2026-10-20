@@ -147,6 +147,7 @@ class PlatformAuditTest extends TestCase
                 'name' => 'Tracer',
                 'email' => 'tracer@dukavo.test',
                 'password' => 'very-strong-password',
+                'password_confirmation' => 'very-strong-password',
                 'role_id' => $role->getKey(),
             ])
             ->assertCreated();
