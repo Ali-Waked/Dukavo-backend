@@ -7,8 +7,10 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\InventoryMovementType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Inventory\AdjustStockRequest;
+use App\Http\Requests\Inventory\TransferStockRequest;
 use App\Http\Resources\InventoryMovementResource;
 use App\Http\Resources\InventoryResource;
+use App\Http\Resources\StockTransferResource;
 use App\Models\Inventory;
 use App\Models\ProductVariant;
 use App\Models\Store;
@@ -92,6 +94,7 @@ class InventoryController extends Controller
             $inventory,
             $request->integer('quantity'),
             $request->validated('note'),
+            $request->validated('idempotency_key'),
         );
 
         return ApiResponse::created('Stock adjusted.', new InventoryMovementResource($movement));
@@ -113,9 +116,35 @@ class InventoryController extends Controller
             InventoryMovementType::Purchase,
             $request->integer('quantity'),
             $request->validated('note'),
+            source: 'purchase',
+            idempotencyKey: $request->validated('idempotency_key'),
         );
 
         return ApiResponse::created('Stock received.', new InventoryMovementResource($movement));
+    }
+
+    /**
+     * Move stock between two stores without pretending it was a sale or a
+     * purchase. Both stores belong to the active tenant and the ledger records
+     * the paired out/in movements.
+     */
+    public function transfer(TransferStockRequest $request): JsonResponse
+    {
+        $from = Store::query()->findOrFail($request->integer('from_store_id'));
+        $to = Store::query()->findOrFail($request->integer('to_store_id'));
+        $variant = ProductVariant::query()->with('product')->findOrFail($request->integer('product_variant_id'));
+
+        $transfer = $this->inventory->transfer(
+            $from,
+            $to,
+            $variant,
+            $request->integer('quantity'),
+            $request->validated('note'),
+            auth()->id(),
+            $request->validated('idempotency_key'),
+        );
+
+        return ApiResponse::created('Stock transferred.', new StockTransferResource($transfer));
     }
 
     /**

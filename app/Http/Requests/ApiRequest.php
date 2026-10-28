@@ -11,6 +11,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
+use Illuminate\Validation\Rules\In;
 use Illuminate\Validation\Rules\Unique;
 
 /**
@@ -73,7 +74,7 @@ abstract class ApiRequest extends FormRequest
      *
      * @param  array<int, string>  $values
      */
-    protected function oneOf(array $values): Rule
+    protected function oneOf(array $values): In
     {
         return Rule::in($values);
     }

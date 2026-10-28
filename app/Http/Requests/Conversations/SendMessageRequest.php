@@ -9,9 +9,9 @@ use App\Http\Requests\ApiRequest;
 /**
  * An outbound message.
  *
- * `external_id` is a provider-side idempotency hint: when the caller already has
- * one (a queued job retry, for example) it is stored so the same provider id can
- * never produce two rows.
+ * `idempotency_key` is the caller's send-once key. The provider's own message id
+ * is learned from the response and stored separately, so a receipt always maps
+ * to the message Meta created.
  */
 class SendMessageRequest extends ApiRequest
 {
@@ -22,7 +22,9 @@ class SendMessageRequest extends ApiRequest
     {
         return [
             'body' => ['required', 'string', 'max:4096'],
-            'external_id' => ['nullable', 'string', 'max:190'],
+            'idempotency_key' => ['sometimes', 'nullable', 'string', 'max:190'],
+            // Kept for older clients that called the send-once key external_id.
+            'external_id' => ['sometimes', 'nullable', 'string', 'max:190'],
         ];
     }
 }

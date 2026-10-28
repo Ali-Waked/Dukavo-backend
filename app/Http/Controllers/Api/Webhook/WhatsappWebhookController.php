@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Webhook;
 
-use App\Enums\MessageDirection;
-use App\Enums\MessageType;
 use App\Http\Controllers\Controller;
-use App\Models\Customer;
 use App\Models\WhatsappAccount;
-use App\Services\Conversations\ConversationService;
+use App\Services\Channels\WhatsApp\Webhooks\WhatsAppWebhookProcessor;
 use App\Support\ApiResponse;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -41,7 +38,7 @@ use Illuminate\Support\Facades\Log;
 class WhatsappWebhookController extends Controller
 {
     public function __construct(
-        private readonly ConversationService $conversations,
+        private readonly WhatsAppWebhookProcessor $processor,
         private readonly TenantContext $tenants,
     ) {}
 
@@ -175,9 +172,22 @@ class WhatsappWebhookController extends Controller
      */
     private function handle(array $payload): void
     {
-        foreach ($payload['entry'] ?? [] as $entry) {
-            foreach ($entry['changes'] ?? [] as $change) {
+        foreach (($payload['entry'] ?? []) as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            foreach (($entry['changes'] ?? []) as $change) {
+                if (! is_array($change)) {
+                    continue;
+                }
+
                 $value = $change['value'] ?? [];
+
+                if (! is_array($value)) {
+                    continue;
+                }
+
                 $account = $this->resolveAccount($value);
 
                 if ($account === null) {
@@ -185,13 +195,7 @@ class WhatsappWebhookController extends Controller
                 }
 
                 $this->tenants->run($account->tenant, function () use ($account, $value): void {
-                    if ($value['statuses'] ?? []) {
-                        $this->handleStatuses($value);
-                    }
-
-                    if ($value['messages'] ?? []) {
-                        $this->handleInboundMessages($account, $value);
-                    }
+                    $this->processor->process($account, $value);
                 });
             }
         }
@@ -226,127 +230,5 @@ class WhatsappWebhookController extends Controller
         }
 
         return $account;
-    }
-
-    /**
-     * @param  array<string, mixed>  $value
-     */
-    private function handleStatuses(array $value): void
-    {
-        foreach ($value['statuses'] as $status) {
-            $state = $this->deliveryState((string) ($status['status'] ?? ''));
-
-            $this->conversations->markDelivery(
-                array_filter([(string) ($status['id'] ?? '')]),
-                $state,
-                $status['errors'][0]['title'] ?? null,
-            );
-        }
-    }
-
-    /**
-     * Translate Meta's receipt into a delivery state.
-     *
-     * Meta sends a name (`sent`, `delivered`, `read`, `failed`) and older
-     * documentation describes numeric codes for the same four. Anything
-     * unrecognised is treated as `sent` rather than `failed`: inventing a
-     * failure for a receipt this code does not understand would show the
-     * merchant messages the provider never actually rejected.
-     */
-    private function deliveryState(string $status): string
-    {
-        return match (strtolower($status)) {
-            '2', 'delivered' => 'delivered',
-            '3', 'read' => 'read',
-            'failed' => 'failed',
-            default => 'sent',
-        };
-    }
-
-    /**
-     * @param  array<string, mixed>  $message
-     */
-    private function handleInboundMessages(WhatsappAccount $account, array $value): void
-    {
-        foreach ($value['messages'] as $message) {
-            $customer = $this->resolveCustomer($account, $message);
-
-            $conversation = $this->conversations->openForCustomer(
-                $customer,
-                'whatsapp',
-                (string) ($message['from'] ?? ''),
-                [
-                    // The thread belongs to the number it arrived on, so a reply
-                    // cannot leave from a different connection — which matters the
-                    // moment a tenant runs more than one number.
-                    'whatsapp_account_id' => $account->getKey(),
-                    'store_id' => $account->store_id,
-                ],
-            );
-
-            $this->conversations->addMessage($conversation, MessageDirection::Inbound, [
-                'external_id' => (string) ($message['id'] ?? ''),
-                'type' => $this->messageType($message),
-                'body' => $this->messageBody($message),
-                'meta' => ['provider' => 'meta', 'raw_type' => $message['type'] ?? 'unknown'],
-            ]);
-        }
-    }
-
-    /**
-     * Match the sender to a known customer by phone number, and create the
-     * customer when the merchant has never seen the number before.
-     *
-     * @param  array<string, mixed>  $message
-     */
-    private function resolveCustomer(WhatsappAccount $account, array $message): Customer
-    {
-        $phone = (string) ($message['from'] ?? '');
-
-        $customer = Customer::query()->where('phone', $phone)->first();
-
-        if ($customer !== null) {
-            return $customer;
-        }
-
-        return Customer::query()->create([
-            'name' => (string) ($message['profile']['name'] ?? $phone),
-            'phone' => $phone,
-            'status' => 'active',
-            'store_id' => $account->store_id,
-        ]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $message
-     */
-    private function messageType(array $message): MessageType
-    {
-        return match ((string) ($message['type'] ?? 'text')) {
-            'image' => MessageType::Image,
-            'audio', 'voice' => MessageType::Audio,
-            'document', 'sticker' => MessageType::File,
-            default => MessageType::Text,
-        };
-    }
-
-    /**
-     * Only text and captions become a body. Media with no caption stores a null
-     * body rather than a placeholder string, so an image message is never shown
-     * in the thread as if it contained words.
-     *
-     * @param  array<string, mixed>  $message
-     */
-    private function messageBody(array $message): ?string
-    {
-        $type = (string) ($message['type'] ?? 'text');
-
-        if ($type === 'text') {
-            return (string) ($message['text']['body'] ?? '');
-        }
-
-        $caption = $message[$type]['caption'] ?? null;
-
-        return $caption === null ? null : (string) $caption;
     }
 }

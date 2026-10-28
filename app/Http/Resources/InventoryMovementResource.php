@@ -32,6 +32,7 @@ class InventoryMovementResource extends JsonResource
                 ? 'in'
                 : ($this->type === InventoryMovementType::Adjustment ? ($this->quantity >= 0 ? 'in' : 'out') : 'out'),
             'balance_after' => $this->balance_after,
+            'source' => $this->source,
             'note' => $this->note,
             'reference_type' => $this->reference_type,
             'reference_id' => $this->reference_id,

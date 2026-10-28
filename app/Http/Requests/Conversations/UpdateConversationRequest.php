@@ -6,7 +6,6 @@ namespace App\Http\Requests\Conversations;
 
 use App\Enums\ConversationStatus;
 use App\Http\Requests\ApiRequest;
-use App\Models\User;
 use Illuminate\Validation\Rule;
 
 /**
@@ -22,8 +21,6 @@ class UpdateConversationRequest extends ApiRequest
     public function rules(): array
     {
         return [
-            'assigned_to' => ['sometimes', 'nullable', 'integer', Rule::exists(User::class, 'id')],
-            'priority' => ['sometimes', 'integer', 'min:0', 'max:5'],
             'status' => ['sometimes', Rule::enum(ConversationStatus::class)],
         ];
     }

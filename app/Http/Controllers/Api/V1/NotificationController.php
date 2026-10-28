@@ -36,6 +36,10 @@ class NotificationController extends Controller
             default => null,
         };
 
+        $query
+            ->when($request->category(), fn ($query, string $category) => $query->where('category', $category))
+            ->when($request->severity(), fn ($query, string $severity) => $query->where('severity', $severity));
+
         return NotificationResource::collection($query->paginate($request->integer('per_page', 20)));
     }
 
@@ -60,6 +64,15 @@ class NotificationController extends Controller
         $updated = $request->user()->notifications()->whereNull('read_at')->update(['read_at' => now()]);
 
         return ApiResponse::success('All notifications marked as read.', ['updated' => $updated]);
+    }
+
+    public function unread(Request $request, string $notification): JsonResponse
+    {
+        $model = $this->find($request, $notification);
+
+        $model->markAsUnread();
+
+        return ApiResponse::success('Notification marked as unread.', new NotificationResource($model));
     }
 
     public function destroy(Request $request, string $notification): Response

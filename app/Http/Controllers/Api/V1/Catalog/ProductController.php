@@ -42,7 +42,13 @@ class ProductController extends Controller
             )
             ->when($request->filled('search'), fn ($query) => $query->search($request->string('search')->toString()))
             ->when($request->filled('category_id'), fn ($query) => $query->where('category_id', $request->integer('category_id')))
-            ->when($request->filled('store_id'), fn ($query) => $query->where('store_id', $request->integer('store_id')))
+            // A store's catalogue includes products shared with every store
+            // (`store_id` null) plus products assigned specifically to it.
+            ->when($request->filled('store_id'), fn ($query) => $query->where(
+                fn ($inner) => $inner
+                    ->where('store_id', $request->integer('store_id'))
+                    ->orWhereNull('store_id'),
+            ))
             ->when($request->boolean('low_stock'), fn ($query) => $query->whereHas(
                 'inventories',
                 fn ($inner) => $inner->lowStock(),

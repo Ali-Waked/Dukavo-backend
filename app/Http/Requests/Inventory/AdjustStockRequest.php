@@ -29,6 +29,7 @@ class AdjustStockRequest extends ApiRequest
             'quantity' => ['required', 'integer', 'min:0', 'max:1000000'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0', 'max:1000000'],
             'note' => ['nullable', 'string', 'max:500'],
+            'idempotency_key' => ['nullable', 'string', 'max:100'],
         ];
     }
 }
