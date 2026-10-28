@@ -17,8 +17,10 @@ use App\Models\User;
 use App\Services\Ai\Contracts\LanguageModel;
 use App\Services\Ai\Data\AiCompletion;
 use App\Services\Ai\Exceptions\AiUnavailable;
+use App\Services\Ai\Providers\AiProviderFactory;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\FakeAiProviderFactory;
 use Tests\Support\FakeLanguageModel;
 use Tests\TestCase;
 
@@ -56,7 +58,20 @@ class AiAssistantEndpointTest extends TestCase
 
     private function fakeModel(?AiCompletion $completion = null, ?\Throwable $throw = null): void
     {
-        $this->app->instance(LanguageModel::class, new FakeLanguageModel($completion, $throw));
+        $model = new FakeLanguageModel($completion, $throw);
+
+        $this->app->instance(LanguageModel::class, $model);
+        $this->app->instance(AiProviderFactory::class, new FakeAiProviderFactory($model));
+
+        config()->set('ai.provider', 'fake');
+        config()->set('ai.providers.fake', [
+            'driver' => 'fake',
+            'base_url' => '',
+            'api_key' => null,
+            'path' => '',
+            'model' => 'fake',
+            'transport' => [],
+        ]);
     }
 
     private function conversationWithMessage(): Conversation

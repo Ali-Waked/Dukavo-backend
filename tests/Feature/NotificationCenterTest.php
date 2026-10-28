@@ -95,6 +95,51 @@ class NotificationCenterTest extends TestCase
         $this->assertDatabaseMissing('notifications', ['id' => $notification->getKey()]);
     }
 
+    public function test_the_index_filters_by_category_severity_and_read_state(): void
+    {
+        $match = $this->notify($this->user, [
+            'category' => 'orders',
+            'severity' => 'warning',
+        ]);
+        $this->notify($this->user, [
+            'category' => 'orders',
+            'severity' => 'warning',
+            'read_at' => now(),
+        ]);
+        $this->notify($this->user, [
+            'category' => 'messages',
+            'severity' => 'warning',
+        ]);
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/notifications?category=orders&severity=warning&status=unread')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $match->getKey());
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/notifications?severity=severe')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('severity');
+    }
+
+    public function test_a_read_notification_can_be_marked_unread_again(): void
+    {
+        $notification = $this->notify($this->user, ['read_at' => now()]);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/notifications/{$notification->getKey()}/unread")
+            ->assertOk()
+            ->assertJsonPath('data.read', false);
+
+        $this->assertNull($notification->fresh()->read_at);
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/notifications/unread-count')
+            ->assertOk()
+            ->assertJsonPath('data.count', 1);
+    }
+
     public function test_another_users_notification_is_hidden(): void
     {
         $notification = $this->notify($this->other);
@@ -106,8 +151,11 @@ class NotificationCenterTest extends TestCase
         $this->assertNull($notification->fresh()->read_at);
     }
 
-    private function notify(User $user): Notification
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function notify(User $user, array $attributes = []): Notification
     {
-        return Notification::factory()->forUser($user)->create();
+        return Notification::factory()->forUser($user)->create($attributes);
     }
 }

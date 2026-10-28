@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Support;
 
-use App\Services\Ai\Contracts\LanguageModel;
+use App\Services\Ai\Contracts\AiProvider;
 use App\Services\Ai\Data\AiCompletion;
 use App\Services\Ai\Data\AiMessage;
+use App\Services\Ai\Support\AiCapability;
 use Throwable;
 
 /**
@@ -17,12 +18,30 @@ use Throwable;
  * without spending credits or depending on a provider. It can be told to return
  * a canned completion or to raise a specific domain exception.
  */
-final class FakeLanguageModel implements LanguageModel
+final class FakeLanguageModel implements AiProvider
 {
     public function __construct(
         private readonly ?AiCompletion $completion = null,
         private readonly ?Throwable $throw = null,
     ) {}
+
+    public function provider(): string
+    {
+        return 'fake';
+    }
+
+    /**
+     * @return list<AiCapability>
+     */
+    public function capabilities(): array
+    {
+        return [AiCapability::TextCompletion, AiCapability::StructuredOutput, AiCapability::NativeSchema];
+    }
+
+    public function supports(AiCapability $capability): bool
+    {
+        return in_array($capability, $this->capabilities(), true);
+    }
 
     public function isConfigured(): bool
     {
@@ -49,7 +68,10 @@ final class FakeLanguageModel implements LanguageModel
     {
         $this->guard();
 
-        return $this->completion ?? new AiCompletion(text: '{}', structured: []);
+        return $this->completion ?? new AiCompletion(
+            text: '{}',
+            structured: ['reply' => 'Thank you for reaching out.', 'tone' => 'friendly', 'suggestions' => []],
+        );
     }
 
     private function guard(): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\InventoryMovementType;
 use App\Enums\OrderStatus;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\Inventory;
@@ -317,6 +318,30 @@ class OrderWorkflowTest extends TestCase
             'store_id' => $this->store->getKey(),
             'items' => [],
         ]));
+    }
+
+    public function test_cancelling_a_reserved_order_does_not_create_phantom_stock(): void
+    {
+        ['variant' => $variant] = $this->stockedProduct($this->tenant, $this->store, quantity: 10);
+
+        $order = $this->withinTenant($this->tenant, fn (): Order => app(OrderService::class)->create([
+            'store_id' => $this->store->getKey(),
+            'items' => [['product_variant_id' => $variant->getKey(), 'quantity' => 2]],
+        ]));
+
+        $service = app(OrderService::class);
+        $order = $this->withinTenant($this->tenant, fn (): Order => $service->transition($order, OrderStatus::Confirmed));
+        $this->withinTenant($this->tenant, fn (): Order => $service->transition($order, OrderStatus::Cancelled));
+
+        $inventory = Inventory::query()->withoutGlobalScopes()->where('product_variant_id', $variant->getKey())->firstOrFail();
+
+        $this->assertSame(10, $inventory->quantity);
+        $this->assertSame(0, $inventory->reserved_quantity);
+        $this->assertSame(0, InventoryMovement::query()
+            ->withoutGlobalScopes()
+            ->where('reference_id', $order->getKey())
+            ->where('type', InventoryMovementType::ReturnIn)
+            ->count());
     }
 
     /**

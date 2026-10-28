@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\MessageDirection;
+use App\Enums\MessageType;
 use App\Models\Conversation;
 use App\Models\Customer;
 use App\Models\Store;
@@ -211,15 +213,25 @@ class WhatsappCloudApiTest extends TestCase
         $this->fakeAcceptedMessage();
         $conversation = $this->conversationFor($this->account);
 
+        // Free-form replies are only legal inside the 24-hour customer service
+        // window, so the test starts from a real inbound message.
+        $this->withinTenant($this->tenant, fn () => app(ConversationService::class)->addMessage(
+            $conversation,
+            MessageDirection::Inbound,
+            ['external_id' => 'wamid.INBOUND', 'type' => MessageType::Text, 'body' => 'Do you have it?'],
+        ));
+
         $this->actingAs($this->merchant)
             ->withHeader('X-Tenant', $this->tenant->slug)
             ->postJson(route('api.tenant.conversations.reply', $conversation), ['body' => 'On its way'])
             ->assertCreated()
-            ->assertJsonPath('data.message_id', 'wamid.ACCEPTED');
+            ->assertJsonPath('data.external_id', 'wamid.ACCEPTED');
 
         Http::assertSent(fn (ClientRequest $request): bool => str_contains($request->body(), 'On its way'));
 
-        $message = $this->withinTenant($this->tenant, fn () => $conversation->messages()->firstOrFail());
+        $message = $this->withinTenant($this->tenant, fn () => $conversation->messages()
+            ->where('direction', MessageDirection::Outbound)
+            ->firstOrFail());
 
         $this->assertSame('wamid.ACCEPTED', $message->external_id);
         $this->assertSame('sent', $message->delivery_status);
@@ -274,6 +286,34 @@ class WhatsappCloudApiTest extends TestCase
                 'access_token' => 'not-allowed',
             ])
             ->assertForbidden();
+    }
+
+    public function test_the_caller_idempotency_key_is_kept_separate_from_the_provider_message_id(): void
+    {
+        $this->fakeAcceptedMessage();
+        $conversation = $this->conversationFor($this->account);
+
+        $first = $this->withinTenant(
+            $this->tenant,
+            fn () => app(WhatsAppGateway::class)->sendText($conversation, 'Hello', 'client-key-123'),
+        );
+
+        // A webhook receipt carries Meta's id, so Dukavo must store that id in
+        // external_id and keep its own key elsewhere.
+        $message = $this->withinTenant($this->tenant, fn () => $conversation->messages()->firstOrFail());
+
+        $this->assertSame('wamid.ACCEPTED', $first);
+        $this->assertSame('wamid.ACCEPTED', $message->external_id);
+        $this->assertSame('client-key-123', $message->idempotency_key);
+
+        $replayed = $this->withinTenant(
+            $this->tenant,
+            fn () => app(WhatsAppGateway::class)->sendText($conversation, 'Hello', 'client-key-123'),
+        );
+
+        $this->assertSame('wamid.ACCEPTED', $replayed);
+        $this->assertSame(1, $this->withinTenant($this->tenant, fn () => $conversation->messages()->count()));
+        Http::assertSentCount(1);
     }
 
     private function fakeAcceptedMessage(): void

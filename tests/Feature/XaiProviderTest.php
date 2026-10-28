@@ -7,7 +7,7 @@ namespace Tests\Feature;
 use App\Services\Ai\Data\AiMessage;
 use App\Services\Ai\Exceptions\AiRequestFailed;
 use App\Services\Ai\Exceptions\AiUnavailable;
-use App\Services\Ai\Grok\GrokClient;
+use App\Services\Ai\Providers\Xai\XaiProvider;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -20,14 +20,14 @@ use Tests\TestCase;
  * transient failures are retried and terminal ones are mapped to domain
  * exceptions — never surfaced as a raw provider payload.
  */
-class AiGrokClientTest extends TestCase
+class XaiProviderTest extends TestCase
 {
     /**
      * @param  array<string, mixed>  $transport
      */
-    private function client(array $transport = []): GrokClient
+    private function client(array $transport = []): XaiProvider
     {
-        return new GrokClient(
+        return new XaiProvider(
             baseUrl: 'https://api.x.ai/v1',
             apiKey: 'test-key',
             path: '/responses',
@@ -64,7 +64,7 @@ class AiGrokClientTest extends TestCase
 
     public function test_it_is_not_configured_without_a_key(): void
     {
-        $client = new GrokClient('https://api.x.ai/v1', null, '/responses', 'grok-4.7');
+        $client = new XaiProvider('https://api.x.ai/v1', null, '/responses', 'grok-4.7');
 
         $this->assertFalse($client->isConfigured());
 
