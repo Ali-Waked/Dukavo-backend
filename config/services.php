@@ -67,6 +67,13 @@ return [
         'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
         'app_secret' => env('WHATSAPP_APP_SECRET'),
         'api_base_url' => env('WHATSAPP_API_BASE_URL', 'https://graph.facebook.com'),
+        'messaging_window_hours' => (int) env('WHATSAPP_MESSAGING_WINDOW_HOURS', 24),
+        'media_max_bytes' => (int) env('WHATSAPP_MEDIA_MAX_BYTES', 25 * 1024 * 1024),
+        'media_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+            'WHATSAPP_MEDIA_HOSTS',
+            'lookaside.fbsbx.com,*.fbcdn.net,*.whatsapp.net',
+        ))))),
+        'voice_media_retention_days' => (int) env('WHATSAPP_VOICE_MEDIA_RETENTION_DAYS', 30),
     ],
 
 ];
