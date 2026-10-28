@@ -59,9 +59,11 @@ otherwise.
 - **Customers and orders** — customers with addresses, orders with human
   order numbers (`ORD-000123`), server-recomputed totals, status transitions
   and per-order status history.
-- **Conversations (inbox)** — channel-agnostic threads with messages,
-  assignment, a summary endpoint and outbound replies; inbound WhatsApp threads
-  are bound to the number they arrived on.
+- **Conversations (inbox)** — channel-agnostic threads with search, status and
+  owner filters, unread state, assignment, private internal notes, approved
+  WhatsApp templates, the 24-hour reply window, failed-message retry, safe
+  authenticated media, a summary endpoint and outbound replies; inbound
+  WhatsApp threads are bound to the number they arrived on.
 - **WhatsApp Cloud API** — connect/verify/disconnect numbers per tenant,
   outbound text and template sending through Meta's Graph API, Meta's GET
   verification handshake, and signed inbound webhooks (delivery receipts and
@@ -199,15 +201,17 @@ Pagination `meta`/`links` follow Laravel's default page paginator.
 | `401` | Missing or invalid credentials (also on session expiry) |
 | `403` | Authenticated but not allowed (permission, platform or tenant boundary) |
 | `404` | Not found — including rows that exist in another tenant |
-| `422` | Validation failure **and** domain-rule refusals (`BusinessRuleViolation`) |
+| `409` | Domain-rule refusal (`BusinessRuleViolation`) — the current state does not permit the change |
+| `422` | Validation failure |
 | `429` | Throttled (login, waitlist, contact, newsletter, global API limiter) |
 | `500` | Unexpected failure; message only, details when `APP_DEBUG=true` |
 
-> The previous revision of this document documented domain-rule refusals as
-> `409`. The renderers in [`bootstrap/app.php`](bootstrap/app.php) return
-> **`422`** for `BusinessRuleViolation`, and that is what the API now documents.
+> Domain-rule refusals such as replying outside the WhatsApp window, assigning
+> to an ineligible user, or retrying a message that cannot be retried render as
+> **`409`** with the standard `success: false` envelope and the reason in
+> `message`.
 
-Exception rendering for 401/403/404/422/429/500 lives centrally in
+Exception rendering for 401/403/404/409/422/429/500 lives centrally in
 `bootstrap/app.php`, so every failure returns the same `success: false`
 envelope.
 
@@ -338,6 +342,9 @@ never commit a filled-in `.env` (it is git-ignored).
 | `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Secret you invent and enter in Meta's webhook config | webhook handshake |
 | `WHATSAPP_APP_SECRET` | Meta App Secret — validates `X-Hub-Signature-256` | **inbound webhooks: refused while empty** |
 | `WHATSAPP_API_BASE_URL` | Graph API host | default `https://graph.facebook.com` |
+| `WHATSAPP_MESSAGING_WINDOW_HOURS` | Free-form reply window after the customer's last message | `24` |
+| `WHATSAPP_MEDIA_MAX_BYTES` | Maximum inbound attachment size accepted for storage | `26214400` (25 MB) |
+| `WHATSAPP_MEDIA_HOSTS` | Comma-separated HTTPS host allowlist for provider media downloads; `*.example.com` matches subdomains | `lookaside.fbsbx.com,*.fbcdn.net,*.whatsapp.net` |
 
 Details in [Integrations](#10-integrations).
 
@@ -507,7 +514,7 @@ listed permission.
 | Inventory | `GET /tenant/inventory`, `…/low-stock`, `…/{inventory}/movements`, `POST …/adjust`, `POST …/receive` | `inventory.view`, `inventory.manage` |
 | Customers | `GET/POST /tenant/customers`, `GET/PATCH/DELETE …/{customer}` | `customers.view`, `customers.create/update/delete` |
 | Orders | `GET/POST /tenant/orders`, `GET …/{order:order_number}`, `GET …/{order}/transitions`, `PATCH/DELETE …/{order}`, `POST …/{order}/transition` | `orders.view`, `orders.create/update/delete` |
-| Conversations | `GET /tenant/conversations`, `…/summary`, `GET/PATCH/DELETE …/{conversation}`, `GET/POST …/{conversation}/messages`, `POST …/{conversation}/assign` | `conversations.view`, `conversations.reply`, `conversations.assign` |
+| Conversations | `GET /tenant/conversations`, `…/summary`, `…/assignees`, `GET/PATCH/DELETE …/{conversation}`, `GET/POST …/{conversation}/messages`, `POST …/notes`, `POST …/templates`, `POST …/messages/{message}/retry`, `GET …/messages/{message}/media`, `POST …/read`, `POST …/assign` | `conversations.view`, `conversations.reply`, `conversations.assign` |
 | AI | `POST …/{conversation}/ai-reply-draft`, `GET /tenant/ai/insights` | `ai.use` + `conversations.view` / `dashboard.view` |
 | WhatsApp | `GET/POST /tenant/whatsapp-accounts`, `GET …/configuration`, `GET/PATCH/DELETE …/{whatsappAccount}`, `POST …/verify`, `POST …/disconnect` | `whatsapp.view`, `whatsapp.manage` |
 | Dashboard | `GET /tenant/dashboard`, `…/summary`, `…/revenue`, `…/top-products`, `…/dead-stock` | `dashboard.view` |
@@ -650,13 +657,16 @@ erDiagram
 
 Notable constraints:
 
-- `tenant_id` exists on 21 tables; `audit_logs`, `notifications`,
+- `tenant_id` exists on 22 tables; `audit_logs`, `notifications`,
   `ai_usage` and `user_roles` use it as a nullable scope (platform rows have
   none).
 - `user_roles` is unique on `(user_id, role_id, tenant_id)` — one assignment
   per tenant.
-- Conversations and their messages carry an `external_id` unique per
-  direction, which makes Meta webhook redeliveries idempotent.
+- `external_id` stores the provider's message id. Caller-controlled dedupe keys
+  live separately in `idempotency_key`, so AI and HTTP retries cannot collide
+  with Meta ids.
+- `channel_webhook_events` is unique on `(tenant_id, provider, event_key)`;
+  provider redeliveries become no-ops and failed events remain retryable.
 - Orders carry a padded human `order_number` (`ORD-000123`) used as the public
   identifier; money columns are `decimal` and totals are recomputed
   server-side.
@@ -686,14 +696,23 @@ Three separable stages:
    `WHATSAPP_APP_SECRET`. The check **fails closed**: while the secret is
    empty, deliveries are refused with `403` rather than accepted unverified.
    The tenant is resolved from the `phone_number_id` of the connected account,
-   never from the payload; unknown or invalid signatures get `401`; processing
-   errors are logged and acknowledged with `200` so Meta stops redelivering.
+   never from the payload; unknown or invalid signatures get `401`. Every
+   inbound message and receipt is recorded once in `channel_webhook_events`
+   before processing; successful or duplicate events answer `200`, while a
+   processing failure is logged and acknowledged so Meta does not hammer the
+   endpoint. Attachments are downloaded only from HTTPS hosts in
+   `WHATSAPP_MEDIA_HOSTS`, size-checked, stored on the private disk and streamed
+   to signed-in users through the conversation media route.
 
 | Concern | Configuration |
 | --- | --- |
 | Credentials | `WHATSAPP_CLOUD_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID` (paste locally, never commit) |
 | Handshake | `WHATSAPP_WEBHOOK_VERIFY_TOKEN` must equal the value entered in Meta |
 | Signature | `WHATSAPP_APP_SECRET` — required for inbound; empty means "refuse" |
+| Callback URL | `https://<your-api-host>/api/v1/webhooks/whatsapp` |
+| Webhook field | Subscribe the Meta app to `messages` so inbound messages and delivery receipts are delivered |
+| Reply window | `WHATSAPP_MESSAGING_WINDOW_HOURS` (default `24`); after it closes only an approved template can be sent |
+| Media | `WHATSAPP_MEDIA_MAX_BYTES` and `WHATSAPP_MEDIA_HOSTS` constrain downloads; the browser never sees a provider URL |
 | Local development | Point Meta at a public HTTPS tunnel; without it only outbound sending can be exercised |
 
 `POST /api/v1/tenant/whatsapp-accounts/{id}/verify` calls Meta to confirm the
@@ -750,9 +769,9 @@ vendor/bin/pint --dirty --format agent   # format changed PHP files only
 vendor/bin/pint                          # format everything
 ```
 
-- **Framework:** PHPUnit 12 (not Pest). 45 feature files + 1 unit file.
+- **Framework:** PHPUnit 12 (not Pest). 48 feature files + 1 unit file.
 - **Result:** the full suite was run for this document —
-  **381 tests, 1418 assertions, all passing** (exit 0) against an in-memory
+  **414 tests, 1548 assertions, all passing** (exit 0) against an in-memory
   SQLite database on PHP 8.5.
 - **Test environment:** `phpunit.xml` sets `APP_ENV=testing`,
   `DB_CONNECTION=sqlite`, `DB_DATABASE=:memory:`, `QUEUE_CONNECTION=sync`,
@@ -774,6 +793,8 @@ Project-specific issues first:
 | Inbound webhook answers `403` | `WHATSAPP_APP_SECRET` is empty or wrong. The endpoint fails closed by design — set the real App Secret locally. |
 | `POST /webhooks/whatsapp` answers `401` | Signature missing/incorrect — this is the signature check working; it is not a client bug. |
 | WhatsApp verify returns "credentials required" | `WHATSAPP_CLOUD_API_TOKEN` (or the platform token + matching `WHATSAPP_PHONE_NUMBER_ID`) is not set. |
+| Free-text reply answers `409` | The WhatsApp 24-hour window is closed. Send an approved template instead. |
+| Inbound attachment is rejected | Its host is missing from `WHATSAPP_MEDIA_HOSTS` or it exceeds `WHATSAPP_MEDIA_MAX_BYTES`. |
 | Tenant endpoints answer `403`/`404` although you are logged in | Missing or wrong `X-Tenant` header, or the user is not a member of that tenant. |
 | SPA receives `419` | The CSRF cookie was not primed (`GET /sanctum/csrf-cookie`) or `SANCTUM_STATEFUL_DOMAINS`/`FRONTEND_URL` do not include the SPA origin. |
 | SPA receives `401` on every call after CORS is enabled | `FRONTEND_URL` must match the exact origin the browser uses; credentials are required (`supports_credentials` is true). |
