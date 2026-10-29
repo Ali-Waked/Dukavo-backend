@@ -35,8 +35,23 @@ class MetaCloudGateway implements WhatsAppGateway
 {
     public function __construct(private readonly ConversationService $conversations) {}
 
-    public function sendText(Conversation $conversation, string $body, ?string $externalId = null): string
+    public function sendText(Conversation $conversation, string $body, ?string $idempotencyKey = null): string
     {
+        // A caller that supplies a stable key is asking for send-once semantics.
+        // If the message is already in the thread, the previous attempt reached
+        // the provider and repeated work would deliver it to the customer twice.
+        if ($idempotencyKey !== null && $idempotencyKey !== '') {
+            $existing = ConversationMessage::query()
+                ->where('conversation_id', $conversation->getKey())
+                ->where('direction', MessageDirection::Outbound)
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
+
+            if ($existing instanceof ConversationMessage && filled($existing->external_id)) {
+                return (string) $existing->external_id;
+            }
+        }
+
         $account = $this->accountFor($conversation, 'send_text');
 
         $response = $this->client($account)->post($this->messagesUrl($account), [
@@ -55,7 +70,8 @@ class MetaCloudGateway implements WhatsAppGateway
             'user_id' => auth()->id(),
             'type' => MessageType::Text,
             'body' => $body,
-            'external_id' => $externalId ?? $messageId,
+            'external_id' => $messageId,
+            'idempotency_key' => $idempotencyKey,
             'delivery_status' => 'sent',
             'sent_at' => now(),
         ]);
@@ -63,8 +79,20 @@ class MetaCloudGateway implements WhatsAppGateway
         return $messageId;
     }
 
-    public function sendTemplate(Conversation $conversation, string $templateName, string $languageCode, array $parameters = []): string
+    public function sendTemplate(Conversation $conversation, string $templateName, string $languageCode, array $parameters = [], ?string $idempotencyKey = null): string
     {
+        if ($idempotencyKey !== null && $idempotencyKey !== '') {
+            $existing = ConversationMessage::query()
+                ->where('conversation_id', $conversation->getKey())
+                ->where('direction', MessageDirection::Outbound)
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
+
+            if ($existing instanceof ConversationMessage && filled($existing->external_id)) {
+                return (string) $existing->external_id;
+            }
+        }
+
         $account = $this->accountFor($conversation, 'send_template');
 
         $response = $this->client($account)->post($this->messagesUrl($account), [
@@ -84,7 +112,116 @@ class MetaCloudGateway implements WhatsAppGateway
             ],
         ]);
 
-        return $this->messageIdFrom($response, 'send_template');
+        $messageId = $this->messageIdFrom($response, 'send_template');
+
+        $this->conversations->addMessage($conversation, MessageDirection::Outbound, [
+            'user_id' => auth()->id(),
+            'type' => MessageType::Template,
+            'body' => $templateName,
+            'external_id' => $messageId,
+            'idempotency_key' => $idempotencyKey,
+            'delivery_status' => 'sent',
+            'sent_at' => now(),
+            'meta' => [
+                'template' => [
+                    'name' => $templateName,
+                    'language' => $languageCode,
+                    'parameters' => $parameters,
+                ],
+            ],
+        ]);
+
+        return $messageId;
+    }
+
+    public function downloadMedia(WhatsappAccount $account, string $mediaId): array
+    {
+        if (blank($mediaId) || blank($this->tokenFor($account))) {
+            throw WhatsAppDeliveryFailed::missingCredentials('download_media');
+        }
+
+        $metadata = $this->client($account)
+            ->connectTimeout(3)
+            ->timeout(10)
+            ->get($this->baseUrl().'/'.$mediaId);
+
+        if (! $metadata->successful()) {
+            throw $this->failure('download_media', $metadata);
+        }
+
+        $url = (string) $metadata->json('url');
+        $mimeType = (string) $metadata->json('mime_type');
+
+        if (! $this->isAllowedMediaUrl($url)) {
+            throw WhatsAppDeliveryFailed::fromProvider('download_media', $metadata->status(), 'Untrusted media URL', $metadata->header('x-fb-request-id'));
+        }
+
+        $download = Http::withToken((string) $this->tokenFor($account))
+            ->timeout(60)
+            ->get($url);
+
+        if (! $download->successful()) {
+            throw $this->failure('download_media', $download);
+        }
+
+        $contents = $download->body();
+        $maxBytes = max(1, (int) config('services.whatsapp.media_max_bytes', 25 * 1024 * 1024));
+
+        if (strlen($contents) > $maxBytes) {
+            throw WhatsAppDeliveryFailed::fromProvider('download_media', 413, 'Media exceeds the allowed size', null);
+        }
+
+        return [
+            'contents' => $contents,
+            'mime_type' => $mimeType !== '' ? $mimeType : (string) $download->header('Content-Type'),
+            'size' => strlen($contents),
+            'filename' => $this->filenameFrom($download->header('Content-Disposition')),
+        ];
+    }
+
+    private function isAllowedMediaUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || ($parts['scheme'] ?? null) !== 'https' || blank($parts['host'] ?? null)) {
+            return false;
+        }
+
+        $host = strtolower((string) $parts['host']);
+        $allowed = (array) config('services.whatsapp.media_hosts', [
+            'lookaside.fbsbx.com',
+            '*.fbcdn.net',
+            '*.whatsapp.net',
+        ]);
+
+        foreach ($allowed as $pattern) {
+            $pattern = strtolower((string) $pattern);
+
+            if ($pattern === $host) {
+                return true;
+            }
+
+            if (str_starts_with($pattern, '*.') && str_ends_with($host, substr($pattern, 1))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function filenameFrom(?string $header): ?string
+    {
+        if (blank($header)) {
+            return null;
+        }
+
+        if (preg_match('/filename\*?=(?:UTF-8\'\')?"?([^";]+)"?/i', $header, $matches) !== 1) {
+            return null;
+        }
+
+        $name = basename(urldecode($matches[1]));
+
+        return $name !== '' ? $name : null;
     }
 
     public function verifyAccount(WhatsappAccount $account): string

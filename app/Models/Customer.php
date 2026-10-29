@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -23,7 +24,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * may shop across stores, or be captured twice with slightly different
  * spellings. Deduplication is a deliberate, auditable action.
  */
-#[Fillable(['tenant_id', 'store_id', 'name', 'email', 'phone', 'status', 'locale', 'notes'])]
+#[Fillable(['tenant_id', 'store_id', 'name', 'email', 'phone', 'status', 'whatsapp_opt_out_at', 'locale', 'notes'])]
 class Customer extends Model
 {
     /** @use HasFactory<CustomerFactory> */
@@ -34,13 +35,14 @@ class Customer extends Model
      */
     protected function auditAttributes(): array
     {
-        return ['name', 'email', 'phone', 'status', 'locale'];
+        return ['name', 'email', 'phone', 'status', 'whatsapp_opt_out_at', 'locale'];
     }
 
     protected function casts(): array
     {
         return [
             'last_order_at' => 'datetime',
+            'whatsapp_opt_out_at' => 'datetime',
         ];
     }
 
@@ -76,9 +78,33 @@ class Customer extends Model
         return $this->hasMany(Conversation::class);
     }
 
+    /**
+     * @return HasMany<RecoveryOpportunity, $this>
+     */
+    public function recoveryOpportunities(): HasMany
+    {
+        return $this->hasMany(RecoveryOpportunity::class);
+    }
+
     public function defaultAddress(): ?CustomerAddress
     {
         return $this->addresses->firstWhere('is_default', true) ?? $this->addresses->first();
+    }
+
+    /**
+     * @return HasMany<CustomerMemory, $this>
+     */
+    public function memories(): HasMany
+    {
+        return $this->hasMany(CustomerMemory::class);
+    }
+
+    /**
+     * @return HasOne<CustomerSummary, $this>
+     */
+    public function summary(): HasOne
+    {
+        return $this->hasOne(CustomerSummary::class);
     }
 
     #[Scope]

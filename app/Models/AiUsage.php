@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'tenant_id',
     'user_id',
     'feature',
+    'provider',
     'status',
     'model',
     'input_tokens',

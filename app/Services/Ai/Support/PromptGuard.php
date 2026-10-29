@@ -43,11 +43,13 @@ final class PromptGuard
 
     /**
      * Remove null bytes and control characters (keeping newlines and tabs) so a
-     * payload cannot smuggle terminal escapes or split a delimiter.
+     * payload cannot smuggle terminal escapes, and neutralise the delimiter
+     * tokens themselves so untrusted content cannot close the data block early.
      */
     public function clean(string $value): string
     {
         $stripped = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value) ?? '';
+        $stripped = str_ireplace([self::OPEN, self::CLOSE], '[delimiter removed]', $stripped);
 
         return trim($stripped);
     }

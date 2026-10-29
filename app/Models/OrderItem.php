@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * `name` and `sku` are snapshots taken at purchase time; the nullable product
  * references let the catalogue change without rewriting order history.
  */
-#[Fillable(['tenant_id', 'order_id', 'product_id', 'product_variant_id', 'name', 'sku', 'unit_price', 'quantity', 'discount_total', 'tax_total', 'line_total'])]
+#[Fillable(['tenant_id', 'order_id', 'product_id', 'product_variant_id', 'name', 'sku', 'unit_price', 'unit_cost', 'cost_currency', 'cost_captured_at', 'quantity', 'discount_total', 'tax_total', 'line_total'])]
 class OrderItem extends Model
 {
     use BelongsToTenant;
@@ -24,6 +24,8 @@ class OrderItem extends Model
     {
         return [
             'unit_price' => 'decimal:2',
+            'unit_cost' => 'decimal:2',
+            'cost_captured_at' => 'datetime',
             'discount_total' => 'decimal:2',
             'tax_total' => 'decimal:2',
             'line_total' => 'decimal:2',

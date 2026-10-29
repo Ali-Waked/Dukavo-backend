@@ -8,6 +8,8 @@ use App\Enums\InventoryMovementType;
 use App\Enums\NotificationSeverity;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
+use App\Events\Automation\OrderCreated as AutomationOrderCreated;
+use App\Events\Automation\OrderStatusChanged as AutomationOrderStatusChanged;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\Customer;
 use App\Models\Order;
@@ -21,6 +23,7 @@ use App\Services\Inventory\InventoryService;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\Notifications\NotificationEventCatalog as Events;
 use App\Services\Notifications\NotificationIntent;
+use App\Services\Recovery\RecoveryService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -39,12 +42,13 @@ class OrderService
         private readonly InventoryService $inventory,
         private readonly TenantContext $tenants,
         private readonly NotificationDispatcher $notifications,
+        private readonly RecoveryService $recoveries,
     ) {}
 
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public function create(array $attributes): Order
+    public function create(array $attributes, bool $notify = true): Order
     {
         $tenant = $this->tenants->required();
         $store = $this->resolveStore($attributes['store_id'] ?? null);
@@ -58,6 +62,7 @@ class OrderService
                 'tenant_id' => $tenant->getKey(),
                 'store_id' => $store->getKey(),
                 'customer_id' => $customer?->getKey(),
+                'conversation_id' => $attributes['conversation_id'] ?? null,
                 'order_number' => $this->nextOrderNumber($store),
                 'status' => OrderStatus::Pending,
                 'payment_status' => PaymentStatus::Unpaid,
@@ -86,6 +91,23 @@ class OrderService
             return $order->load(['items', 'store', 'customer', 'statusHistory']);
         });
 
+        $this->recoveries->attributeOrder($order);
+
+        if ($notify) {
+            $this->announceCreated($order);
+        }
+
+        return $order;
+    }
+
+    /**
+     * Emit the "order created" notification for an order that has already been
+     * committed. Cart conversion defers this until its wider transaction
+     * commits, so a rolled-back proposal can never announce an order that does
+     * not exist.
+     */
+    public function announceCreated(Order $order): void
+    {
         $this->notifications->dispatch(new NotificationIntent(
             eventKey: Events::TENANT_ORDER_CREATED,
             tenantId: (int) $order->tenant_id,
@@ -99,7 +121,7 @@ class OrderService
             actorId: auth()->id(),
         ));
 
-        return $order;
+        event(AutomationOrderCreated::fromOrder($order));
     }
 
     /**
@@ -175,6 +197,10 @@ class OrderService
             $lineTax = $product->is_taxable ? round($lineTaxable * $taxRate, 2) : 0.0;
             $lineTotal = round($lineTaxable + $lineTax, 2);
 
+            // Catalogue costs change. Capture the cost used for this line now so
+            // profit reports never rewrite history with a later supplier price.
+            $unitCost = $this->historicalUnitCost($product, $variant, (string) $order->currency);
+
             OrderItem::query()->create([
                 'tenant_id' => $order->tenant_id,
                 'order_id' => $order->getKey(),
@@ -183,6 +209,9 @@ class OrderService
                 'name' => $product->name.($variant->is_default ? '' : ' — '.$variant->name),
                 'sku' => $variant->sku ?? $product->sku,
                 'unit_price' => $unitPrice,
+                'unit_cost' => $unitCost,
+                'cost_currency' => $unitCost === null ? null : strtoupper((string) $product->currency),
+                'cost_captured_at' => $unitCost === null ? null : now(),
                 'quantity' => $quantity,
                 'discount_total' => $lineDiscount,
                 'tax_total' => $lineTax,
@@ -207,6 +236,34 @@ class OrderService
             'shipping_total' => $shippingTotal,
             'grand_total' => $grandTotal,
         ])->save();
+    }
+
+    /**
+     * The catalogue unit cost, but only when it is trustworthy for this sale.
+     *
+     * A cost is unusable when it is zero/negative, or when the catalogue stores
+     * it in a different currency than the order. Returning null keeps the gap
+     * visible in profit reports instead of pretending the line was free.
+     */
+    private function historicalUnitCost(Product $product, ProductVariant $variant, string $orderCurrency): ?float
+    {
+        $catalogCurrency = strtoupper(trim((string) $product->currency));
+
+        if ($catalogCurrency === '' || $catalogCurrency !== strtoupper(trim($orderCurrency))) {
+            return null;
+        }
+
+        $cost = (float) $variant->cost;
+
+        if ($cost <= 0) {
+            $cost = (float) $product->cost;
+        }
+
+        if ($cost <= 0 || ! is_finite($cost)) {
+            return null;
+        }
+
+        return round($cost, 2);
     }
 
     /**
@@ -255,6 +312,8 @@ class OrderService
                 $order->getMorphClass(),
                 $order->getKey(),
                 auth()->id(),
+                'order',
+                'order:'.$order->getKey().':ship:'.$item->getKey(),
             );
         }
     }
@@ -278,8 +337,9 @@ class OrderService
         }
 
         $from = $order->status;
+        $history = null;
 
-        $order = DB::transaction(function () use ($order, $status, $note): Order {
+        $order = DB::transaction(function () use ($order, $status, $note, &$history): Order {
             $from = $order->status;
             $attributes = ['status' => $status];
 
@@ -293,26 +353,30 @@ class OrderService
 
             $order->forceFill($attributes)->save();
 
-            // Stock leaves the warehouse when the goods actually ship, and
-            // comes back when the order is cancelled. Consuming a line also
-            // settles that line's reservation, so no second release is issued
-            // here; releasing again would hand the same units to another order.
+            // Stock leaves the warehouse when the goods actually ship. A
+            // confirmed or processing order has only reserved units, so
+            // cancelling it releases the reservation and must not manufacture
+            // a return movement for stock that never left.
             if ($status === OrderStatus::Shipped && $from->consumesStock()) {
                 $this->consumeStock($order);
             }
 
             if ($status === OrderStatus::Cancelled) {
-                if ($from->consumesStock()) {
+                if ($from === OrderStatus::Shipped) {
                     $this->restock($order);
                 }
 
                 $this->releaseReservations($order);
             }
 
-            $this->recordStatusHistory($order, $from, $status, $note);
+            $history = $this->recordStatusHistory($order, $from, $status, $note);
 
             return $order->load(['items.variant', 'store', 'customer', 'statusHistory']);
         });
+
+        if ($status === OrderStatus::Cancelled) {
+            $this->recoveries->releaseOrder($order);
+        }
 
         // Low stock is re-checked after the stock side effects committed: a
         // shipment that drew a line below its threshold should raise one alert
@@ -335,6 +399,10 @@ class OrderService
             actorId: auth()->id(),
             severity: $this->severityForStatus($status),
         ));
+
+        if ($history instanceof OrderStatusHistory) {
+            event(AutomationOrderStatusChanged::fromOrder($order, $from, $status, $history, $note));
+        }
 
         return $order;
     }
@@ -367,6 +435,8 @@ class OrderService
                 $order->getMorphClass(),
                 $order->getKey(),
                 auth()->id(),
+                source: 'order_cancelled',
+                idempotencyKey: 'order:'.$order->getKey().':cancel:'.$item->getKey(),
             );
         }
     }

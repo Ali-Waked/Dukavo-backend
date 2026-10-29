@@ -19,6 +19,7 @@ final readonly class NotificationIntent
 {
     /**
      * @param  array<string, scalar|null>  $data
+     * @param  list<int>|null  $recipientIds  narrows the audience to named users; null means everyone the event permits
      */
     public function __construct(
         public string $eventKey,
@@ -28,6 +29,7 @@ final readonly class NotificationIntent
         public ?string $actionUrl = null,
         public ?int $actorId = null,
         public ?NotificationSeverity $severity = null,
+        public ?array $recipientIds = null,
     ) {}
 
     /**

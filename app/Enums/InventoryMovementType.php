@@ -15,6 +15,8 @@ enum InventoryMovementType: string
     case Sale = 'sale';
     case ReturnIn = 'return_in';
     case ReturnOut = 'return_out';
+    case TransferIn = 'transfer_in';
+    case TransferOut = 'transfer_out';
     case Adjustment = 'adjustment';
 
     /**
@@ -23,8 +25,8 @@ enum InventoryMovementType: string
     public function direction(): int
     {
         return match ($this) {
-            self::Initial, self::Purchase, self::ReturnIn => 1,
-            self::Sale, self::ReturnOut => -1,
+            self::Initial, self::Purchase, self::ReturnIn, self::TransferIn => 1,
+            self::Sale, self::ReturnOut, self::TransferOut => -1,
             self::Adjustment => 0,
         };
     }
@@ -37,6 +39,8 @@ enum InventoryMovementType: string
             self::Sale => 'Sale',
             self::ReturnIn => 'Return in',
             self::ReturnOut => 'Return out',
+            self::TransferIn => 'Transfer in',
+            self::TransferOut => 'Transfer out',
             self::Adjustment => 'Adjustment',
         };
     }

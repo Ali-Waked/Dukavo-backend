@@ -112,13 +112,20 @@ class ProfileService
      * Merge a partial preference update over what is already stored, so a client
      * toggling one switch never has to resend the whole set.
      *
+     * The merge deliberately starts from the raw column rather than the resolved
+     * set: writing the resolved values back would freeze today's role-aware
+     * defaults into the account, so a later role change could never move a
+     * switch the user never touched.
+     *
      * @param  array<string, mixed>  $submitted
      */
     public function updateNotificationPreferences(User $user, array $submitted): User
     {
-        $preferences = $user->notificationPreferences();
+        $preferences = $user->notification_preferences ?? [];
 
         foreach (User::NOTIFICATION_CHANNELS as $channel => $events) {
+            $preferences[$channel] ??= [];
+
             foreach ($events as $event) {
                 if (array_key_exists($channel, $submitted) && is_array($submitted[$channel]) && array_key_exists($event, $submitted[$channel])) {
                     $preferences[$channel][$event] = (bool) $submitted[$channel][$event];

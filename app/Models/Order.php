@@ -30,7 +30,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * Product references on the order items are nullable and the item snapshots
  * name/SKU, so historic orders stay readable even after the catalogue changes.
  */
-#[Fillable(['tenant_id', 'store_id', 'customer_id', 'order_number', 'status', 'payment_status', 'currency', 'customer_name', 'customer_phone', 'shipping_address', 'notes'])]
+#[Fillable(['tenant_id', 'store_id', 'customer_id', 'conversation_id', 'order_number', 'status', 'payment_status', 'currency', 'customer_name', 'customer_phone', 'shipping_address', 'notes'])]
 class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
@@ -74,6 +74,14 @@ class Order extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    /**
+     * @return BelongsTo<Conversation, $this>
+     */
+    public function conversation(): BelongsTo
+    {
+        return $this->belongsTo(Conversation::class);
     }
 
     /**

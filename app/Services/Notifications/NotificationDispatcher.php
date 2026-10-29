@@ -94,7 +94,7 @@ final class NotificationDispatcher
 
             $queued = [];
 
-            foreach ($this->channelsFor($user, $event) as $channel) {
+            foreach ($this->channelsFor($user, $event, $intent) as $channel) {
                 $delivery = $this->createDelivery($notification, $user, $event, $channel);
 
                 if ($delivery->status === NotificationDeliveryStatus::Queued) {
@@ -163,7 +163,7 @@ final class NotificationDispatcher
     /**
      * @return list<NotificationChannel>
      */
-    private function channelsFor(User $user, NotificationEvent $event): array
+    private function channelsFor(User $user, NotificationEvent $event, NotificationIntent $intent): array
     {
         // A platform event has no user preference switch: platform alerts are
         // operational, and only channels the event declares are used.
@@ -171,7 +171,7 @@ final class NotificationDispatcher
             return $event->channels;
         }
 
-        $preferences = $user->notificationPreferences();
+        $preferences = $user->notificationPreferences($intent->tenantId);
 
         return array_values(array_filter(
             $event->channels,

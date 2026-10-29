@@ -40,12 +40,12 @@ class AiUnavailable extends RuntimeException
         return new self('This AI feature is currently turned off.', 'ai_feature_disabled', ['feature' => $feature]);
     }
 
-    public static function rateLimited(string $scope): self
+    public static function rateLimited(string $scope, string $unit = 'requests'): self
     {
         return new self(
             'You have reached today\'s AI usage limit. Please try again tomorrow.',
             'ai_rate_limited',
-            ['scope' => $scope],
+            ['scope' => $scope, 'unit' => $unit],
             429,
         );
     }
@@ -56,6 +56,24 @@ class AiUnavailable extends RuntimeException
     public static function provider(string $reason, array $context = []): self
     {
         return new self('AI assistance is temporarily unavailable. Please try again shortly.', 'ai_unavailable', ['reason' => $reason] + $context);
+    }
+
+    /**
+     * No configured provider can serve the request.
+     *
+     * This is a deployment fact, not a transient fault: the requested capability
+     * (native schema enforcement, audio, tool calls) is not offered by the
+     * provider this installation uses.
+     *
+     * @param  list<string>  $capabilities
+     */
+    public static function unsupportedCapability(array $capabilities): self
+    {
+        return new self(
+            'AI assistance is not available for this request on this installation.',
+            'ai_unsupported_capability',
+            ['capabilities' => $capabilities],
+        );
     }
 
     public function errorCode(): string

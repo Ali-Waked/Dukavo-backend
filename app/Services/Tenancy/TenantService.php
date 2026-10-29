@@ -64,6 +64,8 @@ class TenantService
      */
     public function updateTenant(Tenant $tenant, array $attributes): Tenant
     {
+        $previousStatus = $tenant->status;
+
         if (isset($attributes['status'])) {
             $status = $attributes['status'] instanceof TenantStatus
                 ? $attributes['status']
@@ -83,7 +85,31 @@ class TenantService
 
         $tenant->fill($attributes)->save();
 
+        if (isset($attributes['status']) && $tenant->status !== $previousStatus) {
+            $this->notifyTenantStatus($tenant, $previousStatus, $tenant->status);
+        }
+
         return $tenant;
+    }
+
+    /**
+     * Tell platform operators when a workspace changes availability. The
+     * merchant inside the workspace is not the audience: their access simply
+     * stops working, and a platform alert is what lets support explain why.
+     */
+    private function notifyTenantStatus(Tenant $tenant, TenantStatus $from, TenantStatus $to): void
+    {
+        $eventKey = match ($to) {
+            TenantStatus::Suspended => Events::PLATFORM_TENANT_SUSPENDED,
+            TenantStatus::Active => Events::PLATFORM_TENANT_REACTIVATED,
+        };
+
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: $eventKey,
+            dedupeKey: $eventKey.':'.$tenant->getKey().':'.$from->value.':'.now()->format('YmdHisv'),
+            data: ['tenant' => $tenant->name],
+            actionUrl: '/tenants',
+        ));
     }
 
     /**

@@ -25,6 +25,11 @@ final class ConversationAssistant extends Feature
 
     private const HISTORY_LIMIT = 12;
 
+    public function useCaseKey(): string
+    {
+        return self::FEATURE;
+    }
+
     /**
      * @return array{draft: string, tone: string, suggestions: list<string>, usage: array{model: string, input_tokens: int, output_tokens: int, total_tokens: int}}
      */

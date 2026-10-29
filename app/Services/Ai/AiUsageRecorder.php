@@ -13,16 +13,25 @@ use App\Services\Ai\Data\AiCompletion;
  * Recording is best-effort accounting, never part of the answer contract: a
  * failure here must not turn a successful AI call into an error for the user,
  * so writes are isolated and reported rather than thrown.
+ *
+ * Only counts and identifiers are written. No prompt, no answer, no customer
+ * data and no credential ever reaches this table.
  */
 final class AiUsageRecorder
 {
-    public function recordSuccess(string $feature, AiCompletion $completion, ?int $tenantId, ?int $userId): void
-    {
+    public function recordSuccess(
+        string $feature,
+        AiCompletion $completion,
+        ?int $tenantId,
+        ?int $userId,
+        ?string $provider = null,
+    ): void {
         $this->write([
             'tenant_id' => $tenantId,
             'user_id' => $userId,
             'feature' => $feature,
             'status' => 'success',
+            'provider' => $provider,
             'model' => $completion->model,
             'input_tokens' => $completion->inputTokens,
             'output_tokens' => $completion->outputTokens,
@@ -35,13 +44,21 @@ final class AiUsageRecorder
     /**
      * @param  array<string, mixed>  $metadata
      */
-    public function recordFailure(string $feature, ?int $tenantId, ?int $userId, string $reason, ?string $model = null, array $metadata = []): void
-    {
+    public function recordFailure(
+        string $feature,
+        ?int $tenantId,
+        ?int $userId,
+        string $reason,
+        ?string $model = null,
+        array $metadata = [],
+        ?string $provider = null,
+    ): void {
         $this->write([
             'tenant_id' => $tenantId,
             'user_id' => $userId,
             'feature' => $feature,
             'status' => 'failed',
+            'provider' => $provider,
             'model' => $model,
             'metadata' => ['reason' => $reason] + $metadata,
         ]);

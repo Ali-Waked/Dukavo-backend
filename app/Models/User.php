@@ -9,6 +9,7 @@ use App\Http\Resources\ProductImageResource;
 use App\Models\Concerns\HasRoles;
 use App\Models\Concerns\HasTenantMemberships;
 use App\Services\Rbac\PermissionService;
+use App\Support\Tenancy\TenantContext;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -47,8 +48,8 @@ class User extends Authenticatable implements MustVerifyEmail
      * @var array<string, list<string>>
      */
     public const NOTIFICATION_CHANNELS = [
-        'email' => ['order_updates', 'low_stock', 'new_messages', 'weekly_summary', 'product_news'],
-        'whatsapp' => ['order_updates', 'low_stock', 'new_messages'],
+        'email' => ['order_updates', 'low_stock', 'new_messages', 'conversation_assignments', 'delivery_failures', 'approvals', 'weekly_summary', 'product_news'],
+        'whatsapp' => ['order_updates', 'low_stock', 'new_messages', 'conversation_assignments', 'delivery_failures'],
     ];
 
     protected function casts(): array
@@ -72,12 +73,17 @@ class User extends Authenticatable implements MustVerifyEmail
      * default. Reading through this keeps a partially-stored column from
      * producing an `undefined` in the interface.
      *
+     * New operational switches default on only for people whose role actually
+     * grants the matching permission, so a store manager is not opted into AI
+     * approvals they cannot make and a support agent is not opted into stock
+     * alerts they cannot act on. An explicit stored choice always wins.
+     *
      * @return array<string, array<string, bool>>
      */
-    public function notificationPreferences(): array
+    public function notificationPreferences(?int $tenantId = null): array
     {
         $stored = $this->notification_preferences ?? [];
-        $defaults = self::defaultNotificationPreferences();
+        $defaults = $this->defaultNotificationPreferences($tenantId);
         $resolved = [];
 
         foreach (self::NOTIFICATION_CHANNELS as $channel => $events) {
@@ -92,15 +98,22 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Sensible starting point: business-relevant events on, marketing off.
      *
+     * Without a tenant there are no permissions to consult, so the role-aware
+     * switches start off and only switch on once the active workspace proves
+     * the permission.
+     *
      * @return array<string, array<string, bool>>
      */
-    public static function defaultNotificationPreferences(): array
+    public function defaultNotificationPreferences(?int $tenantId = null): array
     {
-        return [
+        $defaults = [
             'email' => [
                 'order_updates' => true,
                 'low_stock' => true,
                 'new_messages' => false,
+                'conversation_assignments' => false,
+                'delivery_failures' => false,
+                'approvals' => false,
                 'weekly_summary' => true,
                 'product_news' => false,
             ],
@@ -108,8 +121,33 @@ class User extends Authenticatable implements MustVerifyEmail
                 'order_updates' => true,
                 'low_stock' => true,
                 'new_messages' => true,
+                'conversation_assignments' => false,
+                'delivery_failures' => false,
             ],
         ];
+
+        $tenantId ??= app(TenantContext::class)->id();
+
+        if ($tenantId === null) {
+            return $defaults;
+        }
+
+        $tenant = Tenant::query()->find($tenantId);
+
+        if (! $tenant instanceof Tenant) {
+            return $defaults;
+        }
+
+        $canWorkInbox = $this->hasPermissionTo('conversations.view', $tenant);
+        $canApproveAi = $this->hasPermissionTo('ai.approve', $tenant);
+
+        $defaults['email']['conversation_assignments'] = $canWorkInbox;
+        $defaults['email']['delivery_failures'] = $canWorkInbox;
+        $defaults['whatsapp']['conversation_assignments'] = $canWorkInbox;
+        $defaults['whatsapp']['delivery_failures'] = $canWorkInbox;
+        $defaults['email']['approvals'] = $canApproveAi;
+
+        return $defaults;
     }
 
     /**

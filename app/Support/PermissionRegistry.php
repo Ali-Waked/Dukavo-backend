@@ -53,6 +53,14 @@ final class PermissionRegistry
             'reply' => 'Send replies to customers',
             'assign' => 'Assign conversations to staff',
         ],
+        'recovery' => [
+            'view' => 'Browse lost-sale opportunities and recovered revenue',
+            'manage' => 'Assign, snooze, dismiss and contact recovery opportunities',
+        ],
+        'automation' => [
+            'view' => 'Browse automation rules, run history and internal tasks',
+            'manage' => 'Create, edit, pause and delete automation rules',
+        ],
         'whatsapp' => [
             'view' => 'View WhatsApp accounts',
             'manage' => 'Connect and disconnect WhatsApp accounts',
@@ -66,7 +74,8 @@ final class PermissionRegistry
             'manage' => 'Update workspace settings',
         ],
         'ai' => [
-            'use' => 'Use AI assistance (reply drafts, insights, content help)',
+            'use' => 'Use AI assistance and propose actions',
+            'approve' => 'Approve, reject and execute AI-proposed actions',
         ],
         'users' => [
             'view' => 'Browse tenant users',
@@ -78,6 +87,10 @@ final class PermissionRegistry
         ],
         'dashboard' => [
             'view' => 'View the dashboard and its analytics',
+        ],
+        'profit' => [
+            'view' => 'View profit, margin and financial intelligence reports',
+            'export' => 'Export financial reports',
         ],
         'audit' => [
             'view' => 'Review the audit log',
@@ -184,9 +197,13 @@ final class PermissionRegistry
                 'customers.update',
                 'conversations.view',
                 'conversations.reply',
+                'recovery.view',
+                'recovery.manage',
+                'automation.view',
                 'whatsapp.view',
                 'stores.view',
                 'ai.use',
+                'ai.approve',
             ],
             default => ['dashboard.view'],
         };

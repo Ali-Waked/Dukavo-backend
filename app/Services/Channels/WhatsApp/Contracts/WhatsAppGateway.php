@@ -21,9 +21,13 @@ interface WhatsAppGateway
     /**
      * Send a text message and return the provider's message id.
      *
+     * `idempotencyKey` is Dukavo's send-once key. It is stored separately from
+     * the provider id so a receipt can always be matched back to the message
+     * Meta actually created.
+     *
      * @throws WhatsAppDeliveryFailed
      */
-    public function sendText(Conversation $conversation, string $body, ?string $externalId = null): string;
+    public function sendText(Conversation $conversation, string $body, ?string $idempotencyKey = null): string;
 
     /**
      * Send an already prepared message template.
@@ -32,7 +36,7 @@ interface WhatsAppGateway
      *
      * @throws WhatsAppDeliveryFailed
      */
-    public function sendTemplate(Conversation $conversation, string $templateName, string $languageCode, array $parameters = []): string;
+    public function sendTemplate(Conversation $conversation, string $templateName, string $languageCode, array $parameters = [], ?string $idempotencyKey = null): string;
 
     /**
      * Verify that the stored credentials still work, returning the provider's
@@ -46,4 +50,17 @@ interface WhatsAppGateway
      * Persist a delivery receipt for a message the provider reported on.
      */
     public function recordStatus(ConversationMessage $message, string $status, ?string $error = null): void;
+
+    /**
+     * Fetch an inbound media object from the provider.
+     *
+     * The first request resolves the short-lived download URL, the second
+     * fetches the bytes. Callers must validate the MIME type and size before
+     * storing or serving the result.
+     *
+     * @return array{contents: string, mime_type: string, size: int, filename: string|null}
+     *
+     * @throws WhatsAppDeliveryFailed
+     */
+    public function downloadMedia(WhatsappAccount $account, string $mediaId): array;
 }

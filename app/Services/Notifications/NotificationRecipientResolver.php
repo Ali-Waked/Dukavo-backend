@@ -44,6 +44,10 @@ final class NotificationRecipientResolver
             ->where('status', UserStatus::Active)
             ->when($intent->actorId !== null, fn ($query) => $query->whereKeyNot($intent->actorId))
             ->whereHas('roleAssignments', fn ($query) => $query->whereNull('tenant_id'))
+            ->when(
+                $intent->recipientIds !== null,
+                fn ($query) => $query->whereIn('id', $intent->recipientIds ?? []),
+            )
             ->orderBy('id')
             ->get();
     }
@@ -69,6 +73,10 @@ final class NotificationRecipientResolver
                         fn ($permission) => $permission->where('slug', $event->permission),
                     ));
             })
+            ->when(
+                $intent->recipientIds !== null,
+                fn ($query) => $query->whereIn('id', $intent->recipientIds ?? []),
+            )
             ->orderBy('id')
             ->get();
     }

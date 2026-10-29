@@ -78,13 +78,17 @@ class Inventory extends Model
     }
 
     /**
-     * Rows at or below their low-stock threshold. The threshold lives on the
-     * row rather than a settings blob so it can be indexed and filtered in SQL.
+     * Rows at or below their low-stock threshold.
+     *
+     * The comparison uses available stock rather than on-hand quantity: units
+     * already promised to open orders cannot serve a new customer, so ignoring
+     * reservations would report healthy stock for a product that is about to
+     * sell out.
      */
     #[Scope]
     protected function lowStock(Builder $query): void
     {
         $query->whereNotNull('low_stock_threshold')
-            ->whereColumn('quantity', '<=', 'low_stock_threshold');
+            ->whereRaw('(quantity - reserved_quantity) <= low_stock_threshold');
     }
 }

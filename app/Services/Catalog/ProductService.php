@@ -258,6 +258,7 @@ class ProductService
                     InventoryMovementType::Initial,
                     $opening,
                     'Opening stock',
+                    source: 'opening',
                 );
             }
         }

@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * `balance_after` records the resulting on-hand quantity, so a stock level can
  * always be explained (and an error spotted) without replaying the ledger.
  */
-#[Fillable(['tenant_id', 'inventory_id', 'user_id', 'type', 'quantity', 'balance_after', 'reference_type', 'reference_id', 'note', 'created_at'])]
+#[Fillable(['tenant_id', 'inventory_id', 'user_id', 'type', 'quantity', 'balance_after', 'reference_type', 'reference_id', 'note', 'source', 'idempotency_key', 'created_at'])]
 class InventoryMovement extends Model
 {
     use BelongsToTenant;

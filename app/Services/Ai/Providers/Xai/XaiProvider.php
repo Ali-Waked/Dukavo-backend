@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Ai\Grok;
+namespace App\Services\Ai\Providers\Xai;
 
-use App\Services\Ai\Contracts\LanguageModel;
+use App\Services\Ai\Contracts\AiProvider;
 use App\Services\Ai\Data\AiCompletion;
 use App\Services\Ai\Data\AiMessage;
 use App\Services\Ai\Exceptions\AiRequestFailed;
 use App\Services\Ai\Exceptions\AiUnavailable;
+use App\Services\Ai\Support\AiCapability;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /**
- * xAI/Grok implementation of {@see LanguageModel} over the Responses API.
+ * xAI/Grok implementation of {@see AiProvider} over the Responses API.
  *
  * Why the Responses API: it is xAI's supported, non-legacy text endpoint. The
  * client always sends `store: false`, so neither the prompt nor the answer is
@@ -28,7 +29,7 @@ use Throwable;
  * bounds retries for genuinely transient failures, and hands back a value object;
  * it never lets a raw provider error, header or stack trace reach a caller.
  */
-final class GrokClient implements LanguageModel
+final class XaiProvider implements AiProvider
 {
     /**
      * @param  array{connect_timeout?: int, timeout?: int, retry_times?: int, retry_base_ms?: int, retry_max_ms?: int, max_prompt_chars?: int}  $transport
@@ -40,6 +41,28 @@ final class GrokClient implements LanguageModel
         private readonly string $defaultModel,
         private readonly array $transport = [],
     ) {}
+
+    public function provider(): string
+    {
+        return 'xai';
+    }
+
+    /**
+     * @return list<AiCapability>
+     */
+    public function capabilities(): array
+    {
+        return [
+            AiCapability::TextCompletion,
+            AiCapability::StructuredOutput,
+            AiCapability::NativeSchema,
+        ];
+    }
+
+    public function supports(AiCapability $capability): bool
+    {
+        return in_array($capability, $this->capabilities(), true);
+    }
 
     public function isConfigured(): bool
     {

@@ -110,6 +110,22 @@ class Notification extends Model
         return true;
     }
 
+    /**
+     * Put a notification back in the unread queue. This is a deliberate user
+     * action, not a side effect of a failed delivery: the in-app record and the
+     * outbound attempts remain independent.
+     */
+    public function markAsUnread(): bool
+    {
+        if (! $this->isRead()) {
+            return false;
+        }
+
+        $this->forceFill(['read_at' => null])->save();
+
+        return true;
+    }
+
     public function archive(): void
     {
         if ($this->isArchived()) {

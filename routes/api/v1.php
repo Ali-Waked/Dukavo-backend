@@ -2,18 +2,35 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\Ai\AiActionController;
+use App\Http\Controllers\Api\V1\Ai\AiAvailabilityController;
+use App\Http\Controllers\Api\V1\Ai\AiSummaryController;
 use App\Http\Controllers\Api\V1\Ai\ContentAssistantController;
 use App\Http\Controllers\Api\V1\Ai\ConversationAssistantController;
 use App\Http\Controllers\Api\V1\Ai\InsightsController;
+use App\Http\Controllers\Api\V1\Ai\MerchantCopilotController;
+use App\Http\Controllers\Api\V1\Ai\SalesCopilotController;
+use App\Http\Controllers\Api\V1\AnalyticsController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\Automation\AutomationMetaController;
+use App\Http\Controllers\Api\V1\Automation\AutomationRuleController;
+use App\Http\Controllers\Api\V1\Automation\AutomationRunController;
+use App\Http\Controllers\Api\V1\Automation\AutomationTaskController;
+use App\Http\Controllers\Api\V1\BundleController;
+use App\Http\Controllers\Api\V1\BundleRecommendationController;
+use App\Http\Controllers\Api\V1\CartController;
 use App\Http\Controllers\Api\V1\Catalog\CategoryController;
 use App\Http\Controllers\Api\V1\Catalog\ProductController;
 use App\Http\Controllers\Api\V1\Catalog\ProductImageController;
 use App\Http\Controllers\Api\V1\ConversationController;
+use App\Http\Controllers\Api\V1\ConversationEventController;
 use App\Http\Controllers\Api\V1\CustomerController;
+use App\Http\Controllers\Api\V1\CustomerCrmController;
+use App\Http\Controllers\Api\V1\CustomerMemoryController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\InventoryController;
+use App\Http\Controllers\Api\V1\InventoryIntelligenceController;
 use App\Http\Controllers\Api\V1\Marketing\ContactController;
 use App\Http\Controllers\Api\V1\Marketing\ContentPageController as MarketingContentPageController;
 use App\Http\Controllers\Api\V1\Marketing\FaqController;
@@ -40,10 +57,13 @@ use App\Http\Controllers\Api\V1\Platform\UserController as PlatformUserControlle
 use App\Http\Controllers\Api\V1\Platform\WaitlistEntryController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ProfileSessionController;
+use App\Http\Controllers\Api\V1\ProfitIntelligenceController;
+use App\Http\Controllers\Api\V1\RecoveryOpportunityController;
 use App\Http\Controllers\Api\V1\RoleController;
 use App\Http\Controllers\Api\V1\StoreController;
 use App\Http\Controllers\Api\V1\TenantSettingsController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\VoiceMessageController;
 use App\Http\Controllers\Api\V1\WhatsappAccountController;
 use App\Http\Controllers\Api\Webhook\WhatsappWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -169,9 +189,11 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::delete('sessions', [ProfileSessionController::class, 'destroyOthers'])->name('sessions.destroy-others');
         Route::delete('sessions/{token}', [ProfileSessionController::class, 'destroy'])->name('sessions.destroy');
 
-        Route::get('notifications/channels', [NotificationPreferenceController::class, 'channels'])->name('notifications.channels');
-        Route::get('notifications', [NotificationPreferenceController::class, 'show'])->name('notifications.show');
-        Route::put('notifications', [NotificationPreferenceController::class, 'update'])->name('notifications.update');
+        Route::middleware('tenant.optional')->group(function (): void {
+            Route::get('notifications/channels', [NotificationPreferenceController::class, 'channels'])->name('notifications.channels');
+            Route::get('notifications', [NotificationPreferenceController::class, 'show'])->name('notifications.show');
+            Route::put('notifications', [NotificationPreferenceController::class, 'update'])->name('notifications.update');
+        });
     });
 
     /*
@@ -186,6 +208,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('unread-count', [NotificationController::class, 'unreadCount'])->name('unread-count');
         Route::post('read-all', [NotificationController::class, 'readAll'])->name('read-all');
         Route::post('{notification}/read', [NotificationController::class, 'read'])->name('read');
+        Route::post('{notification}/unread', [NotificationController::class, 'unread'])->name('unread');
         Route::delete('{notification}', [NotificationController::class, 'destroy'])->name('destroy');
     });
 
@@ -387,14 +410,33 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::patch('products/{product:slug}/images/{image}', [ProductImageController::class, 'update'])->middleware('permission:products.update')->name('products.images.update');
         Route::delete('products/{product:slug}/images/{image}', [ProductImageController::class, 'destroy'])->middleware('permission:products.update')->name('products.images.destroy');
 
+        // Smart Bundles. The two recommendation routes are registered before
+        // `bundles/{bundle}` so "recommendations" is never parsed as a bundle id.
+        // Bundles reuse the catalogue permissions rather than inventing a
+        // parallel grant for the same administrative job.
+        Route::get('bundles/recommendations', [BundleRecommendationController::class, 'index'])
+            ->middleware(['permission:products.view'])->name('bundles.recommendations.index');
+        Route::post('bundles/recommendations/explain', [BundleRecommendationController::class, 'explain'])
+            ->middleware(['permission:products.view', 'permission:ai.use'])->name('bundles.recommendations.explain');
+        Route::get('bundles', [BundleController::class, 'index'])->middleware('permission:products.view')->name('bundles.index');
+        Route::post('bundles', [BundleController::class, 'store'])->middleware('permission:products.create')->name('bundles.store');
+        Route::get('bundles/{bundle}', [BundleController::class, 'show'])->middleware('permission:products.view')->name('bundles.show');
+        Route::get('bundles/{bundle}/preview', [BundleController::class, 'preview'])->middleware('permission:products.view')->name('bundles.preview');
+        Route::patch('bundles/{bundle}', [BundleController::class, 'update'])->middleware('permission:products.update')->name('bundles.update');
+        Route::delete('bundles/{bundle}', [BundleController::class, 'destroy'])->middleware('permission:products.delete')->name('bundles.destroy');
+
         // Inventory
         Route::get('inventory', [InventoryController::class, 'index'])->middleware('permission:inventory.view')->name('inventory.index');
         Route::get('inventory/low-stock', [InventoryController::class, 'lowStock'])->middleware('permission:inventory.view')->name('inventory.low-stock');
-        // The two action routes precede {inventory} so "low-stock" and "adjust"
-        // are never parsed as an inventory id.
+        Route::get('inventory/intelligence', [InventoryIntelligenceController::class, 'overview'])->middleware('permission:inventory.view')->name('inventory.intelligence');
+        Route::get('inventory/intelligence/export', [InventoryIntelligenceController::class, 'export'])->middleware('permission:inventory.view')->name('inventory.intelligence.export');
+        // The two action routes precede {inventory} so "low-stock", "intelligence"
+        // and "adjust" are never parsed as an inventory id.
         Route::get('inventory/{inventory}/movements', [InventoryController::class, 'movements'])->middleware('permission:inventory.view')->name('inventory.movements');
+        Route::get('inventory/{inventory}/intelligence', [InventoryIntelligenceController::class, 'show'])->middleware('permission:inventory.view')->name('inventory.intelligence.show');
         Route::post('inventory/adjust', [InventoryController::class, 'adjust'])->middleware('permission:inventory.manage')->name('inventory.adjust');
         Route::post('inventory/receive', [InventoryController::class, 'receive'])->middleware('permission:inventory.manage')->name('inventory.receive');
+        Route::post('inventory/transfers', [InventoryController::class, 'transfer'])->middleware('permission:inventory.manage')->name('inventory.transfers.store');
 
         // Customers
         Route::get('customers', [CustomerController::class, 'index'])->middleware('permission:customers.view')->name('customers.index');
@@ -402,6 +444,18 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('customers/{customer}', [CustomerController::class, 'show'])->middleware('permission:customers.view')->name('customers.show');
         Route::patch('customers/{customer}', [CustomerController::class, 'update'])->middleware('permission:customers.update')->name('customers.update');
         Route::delete('customers/{customer}', [CustomerController::class, 'destroy'])->middleware('permission:customers.delete')->name('customers.destroy');
+
+        // Customer CRM / Memory
+        Route::get('customers/{customer}/crm/overview', [CustomerCrmController::class, 'overview'])->middleware('permission:customers.view')->name('customers.crm.overview');
+        Route::get('customers/{customer}/crm/timeline', [CustomerCrmController::class, 'timeline'])->middleware('permission:customers.view')->name('customers.crm.timeline');
+        Route::get('customers/{customer}/crm/summary', [CustomerCrmController::class, 'summary'])->middleware('permission:customers.view')->name('customers.crm.summary');
+        Route::post('customers/{customer}/crm/summary/refresh', [CustomerCrmController::class, 'refreshSummary'])->middleware(['permission:customers.view', 'permission:ai.use'])->name('customers.crm.summary.refresh');
+        Route::patch('customers/{customer}/crm/summary', [CustomerCrmController::class, 'updateSummary'])->middleware('permission:customers.update')->name('customers.crm.summary.update');
+
+        Route::get('customers/{customer}/memories', [CustomerMemoryController::class, 'index'])->middleware('permission:customers.view')->name('customers.memories.index');
+        Route::post('customers/{customer}/memories', [CustomerMemoryController::class, 'store'])->middleware('permission:customers.update')->name('customers.memories.store');
+        Route::patch('customers/{customer}/memories/{memory}', [CustomerMemoryController::class, 'update'])->middleware('permission:customers.update')->name('customers.memories.update');
+        Route::delete('customers/{customer}/memories/{memory}', [CustomerMemoryController::class, 'destroy'])->middleware('permission:customers.delete')->name('customers.memories.destroy');
 
         // Orders
         Route::get('orders', [OrderController::class, 'index'])->middleware('permission:orders.view')->name('orders.index');
@@ -416,16 +470,75 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::post('orders/{order}/transition', [OrderController::class, 'transition'])->middleware('permission:orders.update')->name('orders.transition');
         Route::delete('orders/{order}', [OrderController::class, 'destroy'])->middleware('permission:orders.delete')->name('orders.destroy');
 
-        // Inbox
+        // Inbox. Static segments precede {conversation} so "assignees" and
+        // "summary" are never resolved as a conversation primary key.
         Route::get('conversations/summary', [ConversationController::class, 'summary'])->middleware('permission:conversations.view')->name('conversations.summary');
+        Route::get('conversations/assignees', [ConversationController::class, 'assignees'])->middleware('permission:conversations.view')->name('conversations.assignees');
         Route::get('conversations', [ConversationController::class, 'index'])->middleware('permission:conversations.view')->name('conversations.index');
         Route::post('conversations', [ConversationController::class, 'store'])->middleware('permission:conversations.reply')->name('conversations.store');
         Route::get('conversations/{conversation}', [ConversationController::class, 'show'])->middleware('permission:conversations.view')->name('conversations.show');
         Route::patch('conversations/{conversation}', [ConversationController::class, 'update'])->middleware('permission:conversations.assign')->name('conversations.update');
         Route::delete('conversations/{conversation}', [ConversationController::class, 'destroy'])->middleware('permission:conversations.assign')->name('conversations.destroy');
+        Route::get('conversations/{conversation}/events', [ConversationEventController::class, 'index'])->middleware('permission:conversations.view')->name('conversations.events');
         Route::get('conversations/{conversation}/messages', [ConversationController::class, 'messages'])->middleware('permission:conversations.view')->name('conversations.messages');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'reply'])->middleware('permission:conversations.reply')->name('conversations.reply');
+        Route::post('conversations/{conversation}/notes', [ConversationController::class, 'note'])->middleware('permission:conversations.reply')->name('conversations.notes');
+        Route::post('conversations/{conversation}/templates', [ConversationController::class, 'template'])->middleware('permission:conversations.reply')->name('conversations.templates');
+        Route::post('conversations/{conversation}/messages/{message}/retry', [ConversationController::class, 'retry'])->middleware('permission:conversations.reply')->name('conversations.retry');
+        Route::get('conversations/{conversation}/messages/{message}/media', [ConversationController::class, 'media'])->middleware('permission:conversations.view')->name('conversations.media');
+        Route::get('conversations/{conversation}/voice-messages/{voiceMessage}', [VoiceMessageController::class, 'show'])
+            ->middleware('permission:conversations.view')->name('conversations.voice.show');
+        Route::post('conversations/{conversation}/voice-messages/{voiceMessage}/retry', [VoiceMessageController::class, 'retry'])
+            ->middleware(['permission:ai.use', 'permission:conversations.view'])->name('conversations.voice.retry');
+        Route::post('conversations/{conversation}/voice-messages/{voiceMessage}/apply', [VoiceMessageController::class, 'apply'])
+            ->middleware(['permission:ai.use', 'permission:orders.create', 'permission:conversations.view'])->name('conversations.voice.apply');
+        Route::post('conversations/{conversation}/read', [ConversationController::class, 'markRead'])->middleware('permission:conversations.view')->name('conversations.read');
         Route::post('conversations/{conversation}/assign', [ConversationController::class, 'assign'])->middleware('permission:conversations.assign')->name('conversations.assign');
+
+        // Conversation order builder. A cart belongs to a thread, so every
+        // route also requires the conversation it reads to be visible. No stock
+        // moves until confirmation converts the proposal into a pending order.
+        Route::get('conversations/{conversation}/cart', [CartController::class, 'show'])
+            ->middleware(['permission:orders.view', 'permission:conversations.view'])->name('conversations.cart.show');
+        Route::post('conversations/{conversation}/cart', [CartController::class, 'store'])
+            ->middleware(['permission:orders.create', 'permission:conversations.view'])->name('conversations.cart.store');
+        Route::patch('conversations/{conversation}/cart', [CartController::class, 'update'])
+            ->middleware(['permission:orders.update', 'permission:conversations.view'])->name('conversations.cart.update');
+        Route::delete('conversations/{conversation}/cart', [CartController::class, 'cancel'])
+            ->middleware(['permission:orders.update', 'permission:conversations.view'])->name('conversations.cart.cancel');
+        Route::post('conversations/{conversation}/cart/items', [CartController::class, 'addItem'])
+            ->middleware(['permission:orders.update', 'permission:conversations.view'])->name('conversations.cart.items.store');
+        Route::patch('conversations/{conversation}/cart/items/{item}', [CartController::class, 'updateItem'])
+            ->middleware(['permission:orders.update', 'permission:conversations.view'])->name('conversations.cart.items.update');
+        Route::delete('conversations/{conversation}/cart/items/{item}', [CartController::class, 'removeItem'])
+            ->middleware(['permission:orders.update', 'permission:conversations.view'])->name('conversations.cart.items.destroy');
+        Route::post('conversations/{conversation}/cart/request-confirmation', [CartController::class, 'requestConfirmation'])
+            ->middleware(['permission:orders.update', 'permission:conversations.reply'])->name('conversations.cart.request-confirmation');
+        Route::post('conversations/{conversation}/cart/reopen', [CartController::class, 'reopen'])
+            ->middleware(['permission:orders.update', 'permission:conversations.view'])->name('conversations.cart.reopen');
+        Route::post('conversations/{conversation}/cart/confirm', [CartController::class, 'confirm'])
+            ->middleware(['permission:orders.create', 'permission:conversations.view'])->name('conversations.cart.confirm');
+
+        // Lost-sale recovery. Detection is a scheduled job; this surface only
+        // reads the resulting records and records explicit human decisions.
+        Route::get('recovery-opportunities/summary', [RecoveryOpportunityController::class, 'summary'])
+            ->middleware('permission:recovery.view')->name('recovery.summary');
+        Route::get('recovery-opportunities', [RecoveryOpportunityController::class, 'index'])
+            ->middleware('permission:recovery.view')->name('recovery.index');
+        Route::get('recovery-opportunities/{recoveryOpportunity}', [RecoveryOpportunityController::class, 'show'])
+            ->middleware('permission:recovery.view')->name('recovery.show');
+        Route::post('recovery-opportunities/{recoveryOpportunity}/ai-draft', [RecoveryOpportunityController::class, 'draft'])
+            ->middleware(['permission:ai.use', 'permission:recovery.view'])->name('recovery.ai-draft');
+        Route::post('recovery-opportunities/{recoveryOpportunity}/contact', [RecoveryOpportunityController::class, 'contact'])
+            ->middleware(['permission:recovery.manage', 'permission:conversations.reply'])->name('recovery.contact');
+        Route::post('recovery-opportunities/{recoveryOpportunity}/assign', [RecoveryOpportunityController::class, 'assign'])
+            ->middleware('permission:recovery.manage')->name('recovery.assign');
+        Route::post('recovery-opportunities/{recoveryOpportunity}/snooze', [RecoveryOpportunityController::class, 'snooze'])
+            ->middleware('permission:recovery.manage')->name('recovery.snooze');
+        Route::post('recovery-opportunities/{recoveryOpportunity}/dismiss', [RecoveryOpportunityController::class, 'dismiss'])
+            ->middleware('permission:recovery.manage')->name('recovery.dismiss');
+        Route::post('recovery-opportunities/{recoveryOpportunity}/do-not-contact', [RecoveryOpportunityController::class, 'doNotContact'])
+            ->middleware('permission:recovery.manage')->name('recovery.do-not-contact');
 
         // Channel settings. The static `configuration` read is registered before
         // `{whatsappAccount}` for the same reason `conversations/summary` is: a
@@ -445,6 +558,17 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('dashboard/revenue', [DashboardController::class, 'revenue'])->middleware('permission:dashboard.view')->name('dashboard.revenue');
         Route::get('dashboard/top-products', [DashboardController::class, 'topProducts'])->middleware('permission:dashboard.view')->name('dashboard.top-products');
         Route::get('dashboard/dead-stock', [DashboardController::class, 'deadStock'])->middleware('permission:dashboard.view')->name('dashboard.dead-stock');
+        Route::get('analytics', [AnalyticsController::class, 'index'])->middleware('permission:dashboard.view')->name('analytics.index');
+        Route::get('analytics/metrics', [AnalyticsController::class, 'metrics'])->middleware('permission:dashboard.view')->name('analytics.metrics');
+
+        /*
+         * Profit intelligence is financial data, so it has its own permission
+         * rather than riding on the operational dashboard. The export has a
+         * separate grant: reading a report and removing it from the workspace
+         * are different decisions.
+         */
+        Route::get('profit', [ProfitIntelligenceController::class, 'overview'])->middleware('permission:profit.view')->name('profit.index');
+        Route::get('profit/export', [ProfitIntelligenceController::class, 'export'])->middleware('permission:profit.export')->name('profit.export');
 
         /*
          * AI assistance. Drafting a reply reads a conversation, so the route
@@ -454,8 +578,63 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
          */
         Route::post('conversations/{conversation}/ai-reply-draft', [ConversationAssistantController::class, 'draftReply'])
             ->middleware(['permission:ai.use', 'permission:conversations.view'])->name('conversations.reply-draft');
+        Route::post('conversations/{conversation}/ai-sales-copilot', [SalesCopilotController::class, 'suggest'])
+            ->middleware(['permission:ai.use', 'permission:conversations.view'])->name('conversations.ai-sales-copilot');
+        Route::post('ai/merchant-copilot', [MerchantCopilotController::class, 'ask'])
+            ->middleware(['permission:ai.use', 'permission:dashboard.view'])->name('ai.merchant-copilot');
         Route::get('ai/insights', [InsightsController::class, 'tenant'])
             ->middleware(['permission:ai.use', 'permission:dashboard.view'])->name('ai.insights');
+        Route::get('ai/availability', [AiAvailabilityController::class, 'index'])
+            ->middleware(['permission:ai.use'])->name('ai.availability');
+        Route::post('conversations/{conversation}/ai-summary', [AiSummaryController::class, 'dispatch'])
+            ->middleware(['permission:ai.use', 'permission:conversations.view'])->name('conversations.ai-summary');
+        Route::get('ai/action-types', [AiActionController::class, 'types'])
+            ->middleware(['permission:ai.use'])->name('ai.actions.types');
+        Route::get('ai/actions', [AiActionController::class, 'index'])
+            ->middleware(['permission:ai.use'])->name('ai.actions.index');
+        Route::post('ai/actions', [AiActionController::class, 'store'])
+            ->middleware(['permission:ai.use'])->name('ai.actions.store');
+        Route::get('ai/actions/{action}', [AiActionController::class, 'show'])
+            ->middleware(['permission:ai.use'])->name('ai.actions.show');
+        Route::post('ai/actions/{action}/submit', [AiActionController::class, 'submit'])
+            ->middleware(['permission:ai.use'])->name('ai.actions.submit');
+        Route::post('ai/actions/{action}/approve', [AiActionController::class, 'approve'])
+            ->middleware(['permission:ai.approve'])->name('ai.actions.approve');
+        Route::post('ai/actions/{action}/reject', [AiActionController::class, 'reject'])
+            ->middleware(['permission:ai.approve'])->name('ai.actions.reject');
+        Route::post('ai/actions/{action}/execute', [AiActionController::class, 'execute'])
+            ->middleware(['permission:ai.approve'])->name('ai.actions.execute');
+
+        /*
+         * Automations. Configuration is a manager decision, so rules require
+         * `automation.manage`; run history and the internal task queue are
+         * readable by anyone who may see automations. Completing a task is a
+         * work action on a human queue, not a rule change, so it uses `view`.
+         */
+        Route::prefix('automation')->name('automation.')->group(function (): void {
+            Route::get('meta', [AutomationMetaController::class, 'show'])
+                ->middleware('permission:automation.view')->name('meta');
+            Route::get('rules', [AutomationRuleController::class, 'index'])
+                ->middleware('permission:automation.view')->name('rules.index');
+            Route::post('rules', [AutomationRuleController::class, 'store'])
+                ->middleware('permission:automation.manage')->name('rules.store');
+            Route::get('rules/{automationRule}', [AutomationRuleController::class, 'show'])
+                ->middleware('permission:automation.view')->name('rules.show');
+            Route::patch('rules/{automationRule}', [AutomationRuleController::class, 'update'])
+                ->middleware('permission:automation.manage')->name('rules.update');
+            Route::delete('rules/{automationRule}', [AutomationRuleController::class, 'destroy'])
+                ->middleware('permission:automation.manage')->name('rules.destroy');
+            Route::get('runs', [AutomationRunController::class, 'index'])
+                ->middleware('permission:automation.view')->name('runs.index');
+            Route::get('runs/{automationRun}', [AutomationRunController::class, 'show'])
+                ->middleware('permission:automation.view')->name('runs.show');
+            Route::get('tasks', [AutomationTaskController::class, 'index'])
+                ->middleware('permission:automation.view')->name('tasks.index');
+            Route::get('tasks/{automationTask}', [AutomationTaskController::class, 'show'])
+                ->middleware('permission:automation.view')->name('tasks.show');
+            Route::patch('tasks/{automationTask}', [AutomationTaskController::class, 'update'])
+                ->middleware('permission:automation.view')->name('tasks.update');
+        });
 
         // Audit
         Route::get('audit-logs', [AuditLogController::class, 'index'])->middleware('permission:audit.view')->name('audit.index');

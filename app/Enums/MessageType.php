@@ -9,7 +9,10 @@ enum MessageType: string
     case Text = 'text';
     case Image = 'image';
     case Audio = 'audio';
+    case Video = 'video';
     case File = 'file';
+    case Template = 'template';
+    case Note = 'note';
     case System = 'system';
 
     /**
@@ -19,5 +22,19 @@ enum MessageType: string
     public function isSystemGenerated(): bool
     {
         return $this === self::System;
+    }
+
+    /**
+     * Notes are written by the team for the team. They are never handed to a
+     * channel provider and never rendered as customer-visible messages.
+     */
+    public function isInternal(): bool
+    {
+        return $this === self::Note;
+    }
+
+    public function isMedia(): bool
+    {
+        return in_array($this, [self::Image, self::Audio, self::Video, self::File], true);
     }
 }

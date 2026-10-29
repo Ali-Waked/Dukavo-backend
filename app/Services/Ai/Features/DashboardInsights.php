@@ -7,9 +7,10 @@ namespace App\Services\Ai\Features;
 use App\Models\Store;
 use App\Services\Ai\AiGuard;
 use App\Services\Ai\AiUsageRecorder;
-use App\Services\Ai\Contracts\LanguageModel;
 use App\Services\Ai\Data\AiCompletion;
+use App\Services\Ai\Providers\ProviderRegistry;
 use App\Services\Ai\Support\PromptGuard;
+use App\Services\Ai\Validation\JsonSchemaValidator;
 use App\Services\Reporting\DashboardService;
 use App\Services\Reporting\PlatformDashboardService;
 use App\Support\Tenancy\TenantContext;
@@ -29,15 +30,21 @@ final class DashboardInsights extends Feature
     private const FEATURE = 'insights';
 
     public function __construct(
-        LanguageModel $model,
+        ProviderRegistry $providers,
         AiGuard $guard,
         AiUsageRecorder $usage,
         PromptGuard $prompts,
+        JsonSchemaValidator $validator,
         private readonly DashboardService $dashboard,
         private readonly PlatformDashboardService $platform,
         private readonly TenantContext $tenants,
     ) {
-        parent::__construct($model, $guard, $usage, $prompts);
+        parent::__construct($providers, $guard, $usage, $prompts, $validator);
+    }
+
+    public function useCaseKey(): string
+    {
+        return self::FEATURE;
     }
 
     /**

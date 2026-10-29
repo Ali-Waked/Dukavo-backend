@@ -29,6 +29,12 @@ final class NotificationEventCatalog
 
     public const string PLATFORM_TENANT_ONBOARDED = 'platform.tenant.onboarded';
 
+    public const string PLATFORM_TENANT_SUSPENDED = 'platform.tenant.suspended';
+
+    public const string PLATFORM_TENANT_REACTIVATED = 'platform.tenant.reactivated';
+
+    public const string PLATFORM_SUBSCRIPTION_EVENT = 'platform.subscription.event';
+
     public const string TENANT_ORDER_CREATED = 'tenant.order.created';
 
     public const string TENANT_ORDER_STATUS_CHANGED = 'tenant.order.status_changed';
@@ -36,6 +42,16 @@ final class NotificationEventCatalog
     public const string TENANT_INVENTORY_LOW_STOCK = 'tenant.inventory.low_stock';
 
     public const string TENANT_CONVERSATION_MESSAGE_RECEIVED = 'tenant.conversation.message_received';
+
+    public const string TENANT_CONVERSATION_ASSIGNED = 'tenant.conversation.assigned';
+
+    public const string TENANT_MESSAGE_FAILED = 'tenant.message.failed';
+
+    public const string TENANT_APPROVAL_REQUEST = 'tenant.approval.request';
+
+    public const string TENANT_AI_ACTION_AWAITING_REVIEW = 'tenant.ai_action.awaiting_review';
+
+    public const string TENANT_AUTOMATION_TRIGGERED = 'tenant.automation.triggered';
 
     /**
      * Low-stock alerts repeat, so they are rate-limited per inventory row rather
@@ -163,6 +179,102 @@ final class NotificationEventCatalog
                 messages: [
                     'en' => ['title' => 'New message from {customer}', 'body' => '{preview}'],
                     'ar' => ['title' => 'رسالة جديدة من {customer}', 'body' => '{preview}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_CONVERSATION_ASSIGNED,
+                scope: NotificationScope::Tenant,
+                category: 'messages',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'conversations.view',
+                preference: 'conversation_assignments',
+                messages: [
+                    'en' => ['title' => 'Conversation assigned to you', 'body' => '{customer} — {preview}'],
+                    'ar' => ['title' => 'تم إسناد محادثة إليك', 'body' => '{customer} — {preview}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_MESSAGE_FAILED,
+                scope: NotificationScope::Tenant,
+                category: 'messages',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'conversations.view',
+                preference: 'delivery_failures',
+                messages: [
+                    'en' => ['title' => 'Message to {customer} failed', 'body' => 'We could not deliver your message: {reason}'],
+                    'ar' => ['title' => 'فشل إرسال رسالة إلى {customer}', 'body' => 'لم نتمكن من إرسال رسالتك: {reason}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_AI_ACTION_AWAITING_REVIEW,
+                scope: NotificationScope::Tenant,
+                category: 'automation',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail],
+                permission: 'ai.approve',
+                preference: 'approvals',
+                messages: [
+                    'en' => ['title' => 'AI action needs your approval', 'body' => '{summary}'],
+                    'ar' => ['title' => 'إجراء ذكاء اصطناعي يحتاج موافقتك', 'body' => '{summary}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::PLATFORM_TENANT_SUSPENDED,
+                scope: NotificationScope::Platform,
+                category: 'tenants',
+                severity: NotificationSeverity::Warning,
+                messages: [
+                    'en' => ['title' => 'Workspace suspended', 'body' => '{tenant} was suspended.'],
+                    'ar' => ['title' => 'تم تعليق مساحة العمل', 'body' => 'تم تعليق {tenant}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::PLATFORM_TENANT_REACTIVATED,
+                scope: NotificationScope::Platform,
+                category: 'tenants',
+                severity: NotificationSeverity::Success,
+                messages: [
+                    'en' => ['title' => 'Workspace reactivated', 'body' => '{tenant} is active again.'],
+                    'ar' => ['title' => 'تمت إعادة تفعيل مساحة العمل', 'body' => 'أصبحت {tenant} نشطة مجددًا.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_APPROVAL_REQUEST,
+                scope: NotificationScope::Tenant,
+                category: 'approvals',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'ai.approve',
+                preference: 'approvals',
+                messages: [
+                    'en' => ['title' => 'Approval required', 'body' => '{summary}'],
+                    'ar' => ['title' => 'مطلوب موافقة', 'body' => '{summary}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_AUTOMATION_TRIGGERED,
+                scope: NotificationScope::Tenant,
+                category: 'automation',
+                severity: NotificationSeverity::Info,
+                channels: [],
+                permission: 'automation.manage',
+                preference: null,
+                messages: [
+                    'en' => ['title' => 'Automation: {rule}', 'body' => '{message}'],
+                    'ar' => ['title' => 'أتمتة: {rule}', 'body' => '{message}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::PLATFORM_SUBSCRIPTION_EVENT,
+                scope: NotificationScope::Platform,
+                category: 'billing',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                messages: [
+                    'en' => ['title' => 'Subscription update', 'body' => '{summary}'],
+                    'ar' => ['title' => 'تحديث الاشتراك', 'body' => '{summary}'],
                 ],
             ),
         ];
