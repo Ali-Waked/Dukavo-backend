@@ -226,6 +226,36 @@ return [
                 'description' => 'Connect a WhatsApp Business account and reply to customers from the same inbox.',
                 'status' => 'available',
             ],
+            [
+                'slug' => 'bundles',
+                'name' => 'Bundles',
+                'description' => 'Sell product bundles at their own price with accurate stock deduction for every component.',
+                'status' => 'available',
+            ],
+            [
+                'slug' => 'recovery',
+                'name' => 'Lost-sales recovery',
+                'description' => 'Surface abandoned opportunities and follow up with an AI-assisted draft the team approves.',
+                'status' => 'available',
+            ],
+            [
+                'slug' => 'analytics',
+                'name' => 'Analytics',
+                'description' => 'Revenue, order and stock dashboards over the last 30 days, with the trends that need attention.',
+                'status' => 'available',
+            ],
+            [
+                'slug' => 'automation',
+                'name' => 'Automations',
+                'description' => 'Event-driven rules that open tasks, send notifications and propose reviewed actions.',
+                'status' => 'available',
+            ],
+            [
+                'slug' => 'ai-copilot',
+                'name' => 'AI sales copilot',
+                'description' => 'Drafts WhatsApp replies and order proposals from live conversation context, always awaiting approval.',
+                'status' => 'available',
+            ],
         ],
     ],
 ];
