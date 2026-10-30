@@ -192,6 +192,41 @@ class TenantIsolationTest extends TestCase
         $this->assertSame('pending', $order->fresh()->status->value);
     }
 
+    public function test_a_customer_cannot_be_attached_to_another_tenants_store(): void
+    {
+        $mine = $this->tenantWithStore();
+        $theirs = $this->tenantWithStore();
+        $user = $this->memberOf($mine);
+
+        $foreignStore = Store::query()->withoutGlobalScopes()
+            ->where('tenant_id', $theirs->getKey())
+            ->firstOrFail();
+
+        $this->actingAs($user)
+            ->withHeader('X-Tenant', $mine->slug)
+            ->postJson('/api/v1/tenant/customers', [
+                'name' => 'Foreign Store Customer',
+                'store_id' => $foreignStore->getKey(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('store_id');
+
+        $customer = $this->withinTenant(
+            $mine,
+            fn () => Customer::factory()->create(['tenant_id' => $mine->getKey()]),
+        );
+
+        $this->actingAs($user)
+            ->withHeader('X-Tenant', $mine->slug)
+            ->patchJson('/api/v1/tenant/customers/'.$customer->getKey(), [
+                'store_id' => $foreignStore->getKey(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('store_id');
+
+        $this->assertNull($customer->fresh()->store_id);
+    }
+
     public function test_a_user_with_two_tenants_must_choose_one(): void
     {
         $first = $this->tenantWithStore();

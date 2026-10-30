@@ -85,6 +85,70 @@ class OrderWorkflowTest extends TestCase
         $this->assertSame(0.00, (float) $order->grand_total);
     }
 
+    public function test_shipping_can_be_changed_without_resending_the_items(): void
+    {
+        ['variant' => $variant] = $this->stockedProduct($this->tenant, $this->store);
+
+        $order = $this->withinTenant($this->tenant, fn (): Order => app(OrderService::class)->create([
+            'store_id' => $this->store->getKey(),
+            'items' => [['product_variant_id' => $variant->getKey(), 'quantity' => 2]],
+            'tax_rate' => 0.10,
+        ]));
+
+        $updated = $this->withinTenant(
+            $this->tenant,
+            fn (): Order => app(OrderService::class)->update($order, ['shipping_total' => 4.50]),
+        );
+
+        $this->assertSame(4.50, (float) $updated->shipping_total);
+        $this->assertSame(2.00, (float) $updated->tax_total);
+        $this->assertSame(26.50, (float) $updated->grand_total);
+        $this->assertCount(1, $updated->items);
+    }
+
+    public function test_the_tax_rate_can_be_changed_without_resending_the_items(): void
+    {
+        ['variant' => $variant] = $this->stockedProduct($this->tenant, $this->store);
+
+        $order = $this->withinTenant($this->tenant, fn (): Order => app(OrderService::class)->create([
+            'store_id' => $this->store->getKey(),
+            'items' => [['product_variant_id' => $variant->getKey(), 'quantity' => 2]],
+            'shipping_total' => 5,
+            'tax_rate' => 0.10,
+        ]));
+
+        $updated = $this->withinTenant(
+            $this->tenant,
+            fn (): Order => app(OrderService::class)->update($order, ['tax_rate' => 0.20]),
+        );
+
+        $this->assertSame(5.00, (float) $updated->shipping_total);
+        $this->assertSame(4.00, (float) $updated->tax_total);
+        $this->assertSame(29.00, (float) $updated->grand_total);
+    }
+
+    public function test_editing_items_without_a_tax_rate_keeps_the_existing_rate(): void
+    {
+        ['variant' => $variant] = $this->stockedProduct($this->tenant, $this->store);
+
+        $order = $this->withinTenant($this->tenant, fn (): Order => app(OrderService::class)->create([
+            'store_id' => $this->store->getKey(),
+            'items' => [['product_variant_id' => $variant->getKey(), 'quantity' => 2]],
+            'tax_rate' => 0.10,
+        ]));
+
+        $updated = $this->withinTenant(
+            $this->tenant,
+            fn (): Order => app(OrderService::class)->update($order, [
+                'items' => [['product_variant_id' => $variant->getKey(), 'quantity' => 3]],
+            ]),
+        );
+
+        $this->assertSame(3.00, (float) $updated->tax_total);
+        $this->assertSame(33.00, (float) $updated->grand_total);
+        $this->assertSame(3, (int) $updated->items->first()->quantity);
+    }
+
     public function test_order_numbers_are_sequential_within_the_tenant(): void
     {
         ['variant' => $variant] = $this->stockedProduct($this->tenant, $this->store, quantity: 50);

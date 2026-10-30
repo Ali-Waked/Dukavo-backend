@@ -9,6 +9,7 @@ use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
@@ -95,16 +96,63 @@ class AuthEndpointTest extends TestCase
         );
     }
 
-    public function test_a_suspended_user_cannot_sign_in(): void
+    public function test_a_suspended_user_is_told_why_their_correct_credentials_fail(): void
     {
         $this->user->forceFill(['status' => 'suspended'])->save();
 
         $this->postJson('/api/v1/auth/login', [
             'email' => $this->user->email,
             'password' => 'password',
-        ])->assertUnprocessable();
+        ])->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('code', 'account_suspended');
 
         $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_a_suspended_account_still_hides_itself_from_a_wrong_password(): void
+    {
+        $this->user->forceFill(['status' => 'suspended'])->save();
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => $this->user->email,
+            'password' => 'not-my-password',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('email');
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_accepting_an_invitation_activates_the_account(): void
+    {
+        $this->user->forceFill(['status' => 'invited'])->save();
+
+        // Login proves ownership but the account remains pending until the
+        // invitation is accepted by choosing a password.
+        $token = $this->login();
+        $this->assertSame('invited', $this->user->fresh()->status->value);
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.user.status', 'invited');
+
+        $this->postJson('/api/v1/auth/logout')->assertOk();
+
+        $resetToken = Password::broker(config('fortify.passwords'))->createToken($this->user);
+
+        $this->flushHeaders();
+        $this->app['auth']->forgetGuards();
+
+        $this->postJson('/api/v1/auth/reset-password', [
+            'email' => $this->user->email,
+            'password' => 'Str0nge!Passw0rd',
+            'password_confirmation' => 'Str0nge!Passw0rd',
+            'token' => $resetToken,
+        ])->assertOk();
+
+        $this->assertSame('active', $this->user->fresh()->status->value);
     }
 
     public function test_login_is_rate_limited(): void

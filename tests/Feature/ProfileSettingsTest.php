@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\Profile\ProfileService;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
+use Throwable;
 
 /**
  * The user's own account: identity, avatar and notification preferences.
@@ -97,12 +101,7 @@ class ProfileSettingsTest extends TestCase
         Storage::fake('public');
 
         $response = $this->login()
-            ->post('/api/v1/profile/avatar', [
-                'avatar' => UploadedFile::fake()->createWithContent('me.png', base64_decode(
-                    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
-                    true,
-                )),
-            ])
+            ->post('/api/v1/profile/avatar', ['avatar' => $this->avatarPng()])
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -144,6 +143,87 @@ class ProfileSettingsTest extends TestCase
             ->assertJsonValidationErrors('avatar');
 
         $this->assertSame([], Storage::disk('public')->allFiles());
+    }
+
+    public function test_the_avatar_rejects_a_file_that_only_claims_to_be_an_image(): void
+    {
+        Storage::fake('public');
+
+        $broken = "\x89PNG\r\n\x1a\n".str_repeat('x', 32);
+
+        $this->login()
+            ->post('/api/v1/profile/avatar', [
+                'avatar' => UploadedFile::fake()->createWithContent('broken.png', $broken),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('avatar');
+
+        $this->assertSame([], Storage::disk('public')->allFiles());
+    }
+
+    public function test_replacing_the_avatar_removes_the_old_file_only_after_the_new_one_is_saved(): void
+    {
+        Storage::fake('public');
+
+        $this->login()
+            ->post('/api/v1/profile/avatar', ['avatar' => $this->avatarPng('first.png')])
+            ->assertOk();
+
+        $firstPath = $this->user->fresh()->avatar_path;
+        $this->assertNotNull($firstPath);
+        Storage::disk('public')->assertExists($firstPath);
+
+        $this->login()
+            ->post('/api/v1/profile/avatar', ['avatar' => $this->avatarPng('second.png')])
+            ->assertOk();
+
+        $secondPath = $this->user->fresh()->avatar_path;
+        $this->assertNotNull($secondPath);
+        $this->assertNotSame($firstPath, $secondPath);
+        Storage::disk('public')->assertExists($secondPath);
+        Storage::disk('public')->assertMissing($firstPath);
+
+        $entry = AuditLog::query()
+            ->where('auditable_type', (new User)->getMorphClass())
+            ->where('auditable_id', $this->user->getKey())
+            ->orderByDesc('id')
+            ->first();
+
+        $this->assertNotNull($entry);
+        $this->assertSame($firstPath, $entry->old_values['avatar_path']);
+        $this->assertSame($secondPath, $entry->new_values['avatar_path']);
+    }
+
+    public function test_a_failed_avatar_save_keeps_the_previous_file_and_removes_the_new_one(): void
+    {
+        Storage::fake('public');
+
+        $oldPath = 'avatars/'.$this->user->getKey().'/existing.png';
+        Storage::disk('public')->put($oldPath, 'existing avatar');
+        $this->user->forceFill(['avatar_path' => $oldPath])->save();
+
+        $failure = null;
+
+        DB::statement('PRAGMA query_only = ON');
+
+        try {
+            app(ProfileService::class)->storeAvatar(
+                $this->user->fresh(),
+                $this->avatarPng('replacement.png'),
+            );
+        } catch (Throwable $exception) {
+            $failure = $exception;
+        } finally {
+            DB::statement('PRAGMA query_only = OFF');
+        }
+
+        $this->assertNotNull($failure);
+        $this->assertSame($oldPath, $this->user->fresh()->avatar_path);
+        Storage::disk('public')->assertExists($oldPath);
+        $this->assertSame(
+            [$oldPath],
+            Storage::disk('public')->allFiles('avatars/'.$this->user->getKey()),
+        );
     }
 
     public function test_notification_preferences_default_to_sensible_values(): void
@@ -229,5 +309,13 @@ class ProfileSettingsTest extends TestCase
         $this->app['auth']->forgetGuards();
 
         return $this->withToken($this->token);
+    }
+
+    private function avatarPng(string $name = 'me.png'): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent($name, base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+            true,
+        ));
     }
 }

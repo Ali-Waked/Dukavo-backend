@@ -36,6 +36,18 @@ class PublicNewsletterTest extends TestCase
             ->assertJsonPath('data.body', '<p>Fresh features.</p>');
     }
 
+    public function test_an_edition_reports_an_estimated_reading_time(): void
+    {
+        Newsletter::factory()->create([
+            'slug' => 'long-read',
+            'body' => '<p>'.str_repeat('word ', 450).'</p>',
+        ]);
+
+        $this->getJson('/api/v1/public/newsletters/long-read')
+            ->assertOk()
+            ->assertJsonPath('data.reading_minutes', 3);
+    }
+
     public function test_a_draft_is_a_404_never_a_blank_document(): void
     {
         Newsletter::factory()->draft()->create(['slug' => 'unfinished']);
