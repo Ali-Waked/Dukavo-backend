@@ -137,16 +137,25 @@ class OrderService
         }
 
         return DB::transaction(function () use ($order, $attributes): Order {
+            $shippingTotal = array_key_exists('shipping_total', $attributes)
+                ? (float) $attributes['shipping_total']
+                : (float) $order->shipping_total;
+            $taxRate = array_key_exists('tax_rate', $attributes)
+                ? (float) $attributes['tax_rate']
+                : $this->effectiveTaxRate($order);
+
             if (array_key_exists('items', $attributes)) {
                 $this->releaseReservations($order);
                 $order->items()->delete();
 
                 $this->recalculate($order, $attributes['items'], [
-                    'shipping_total' => $attributes['shipping_total'] ?? $order->shipping_total,
-                    'tax_rate' => $attributes['tax_rate'] ?? 0,
+                    'shipping_total' => $shippingTotal,
+                    'tax_rate' => $taxRate,
                     'reserve_stock' => true,
                 ]);
                 unset($attributes['items']);
+            } elseif (array_key_exists('shipping_total', $attributes) || array_key_exists('tax_rate', $attributes)) {
+                $this->recalculateStoredTotals($order, $shippingTotal, $taxRate);
             }
 
             $order->fill(array_intersect_key($attributes, array_flip([
@@ -239,6 +248,75 @@ class OrderService
     }
 
     /**
+     * The rate already applied to this order, recovered from its stored lines.
+     *
+     * Orders do not keep the submitted rate, only the tax amount it produced, so
+     * editing the lines without resending the rate must not silently reset tax
+     * to zero. A line whose net amount and tax are both known is enough to
+     * recover the ratio; rounding may make it a fraction off, which is why the
+     * resulting amounts are recomputed from the rate rather than copied.
+     */
+    private function effectiveTaxRate(Order $order): float
+    {
+        foreach ($order->items()->get() as $item) {
+            $lineSubtotal = round((float) $item->unit_price * (int) $item->quantity, 2);
+            $lineDiscount = round(min((float) $item->discount_total, $lineSubtotal), 2);
+            $net = round($lineSubtotal - $lineDiscount, 2);
+            $tax = (float) $item->tax_total;
+
+            if ($net > 0 && $tax > 0) {
+                return max(0.0, min($tax / $net, 1.0));
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Recompute totals without touching the order's lines or stock.
+     *
+     * Changing shipping or the tax rate is a totals-only edit, so the stored
+     * unit prices, quantities and cost snapshots must survive it untouched.
+     */
+    private function recalculateStoredTotals(Order $order, float $shippingTotal, float $taxRate): void
+    {
+        $shippingTotal = round($shippingTotal, 2);
+        $taxRate = max(0.0, min($taxRate, 1));
+
+        $subtotal = 0.0;
+        $discountTotal = 0.0;
+        $taxTotal = 0.0;
+
+        foreach ($order->items()->with('product')->get() as $item) {
+            $lineSubtotal = round((float) $item->unit_price * (int) $item->quantity, 2);
+            $lineDiscount = round(min((float) $item->discount_total, $lineSubtotal), 2);
+            $lineNet = max(0.0, $lineSubtotal - $lineDiscount);
+
+            $product = $item->product;
+            $taxable = $product?->is_taxable ?? ((float) $item->tax_total > 0);
+            $lineTax = $taxable ? round($lineNet * $taxRate, 2) : 0.0;
+
+            $item->forceFill([
+                'discount_total' => $lineDiscount,
+                'tax_total' => $lineTax,
+                'line_total' => round($lineNet + $lineTax, 2),
+            ])->save();
+
+            $subtotal += $lineSubtotal;
+            $discountTotal += $lineDiscount;
+            $taxTotal += $lineTax;
+        }
+
+        $order->forceFill([
+            'subtotal' => round($subtotal, 2),
+            'discount_total' => round($discountTotal, 2),
+            'tax_total' => round($taxTotal, 2),
+            'shipping_total' => $shippingTotal,
+            'grand_total' => round($subtotal - $discountTotal + $taxTotal + $shippingTotal, 2),
+        ])->save();
+    }
+
+    /**
      * The catalogue unit cost, but only when it is trustworthy for this sale.
      *
      * A cost is unusable when it is zero/negative, or when the catalogue stores
@@ -324,23 +402,32 @@ class OrderService
      */
     public function transition(Order $order, OrderStatus $status, ?string $note = null): Order
     {
-        if ($order->status === $status) {
-            return $order;
-        }
-
-        if (! $order->status->canTransitionTo($status)) {
-            throw BusinessRuleViolation::because(sprintf(
-                'An order cannot move from %s to %s.',
-                $order->status->label(),
-                $status->label(),
-            ));
-        }
-
         $from = $order->status;
         $history = null;
 
-        $order = DB::transaction(function () use ($order, $status, $note, &$history): Order {
+        $order = DB::transaction(function () use ($order, $status, $note, &$from, &$history): Order {
+            // Two operators can click "ship" and "cancel" at the same moment.
+            // Lock the row and re-read the status inside the transaction so only
+            // one transition wins; the other is evaluated against the new state
+            // instead of applying side effects from a stale one. Refreshing the
+            // caller's own model keeps the previous contract: callers that reuse
+            // it see the new status rather than a stale copy.
+            Order::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            $order->refresh();
             $from = $order->status;
+
+            if ($from === $status) {
+                return $order->load(['items.variant', 'store', 'customer', 'statusHistory']);
+            }
+
+            if (! $from->canTransitionTo($status)) {
+                throw BusinessRuleViolation::because(sprintf(
+                    'An order cannot move from %s to %s.',
+                    $from->label(),
+                    $status->label(),
+                ));
+            }
+
             $attributes = ['status' => $status];
 
             if ($status === OrderStatus::Cancelled) {
