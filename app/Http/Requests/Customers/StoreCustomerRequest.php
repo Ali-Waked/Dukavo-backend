@@ -29,7 +29,7 @@ class StoreCustomerRequest extends ApiRequest
             'status' => ['sometimes', 'string', Rule::in(['active', 'inactive'])],
             'locale' => ['sometimes', 'string', 'max:10'],
             'notes' => ['nullable', 'string', 'max:2000'],
-            'store_id' => ['nullable', 'integer', Rule::exists(Store::class, 'id')],
+            'store_id' => ['nullable', 'integer', $this->tenantExists(Store::class)],
             'addresses' => ['sometimes', 'array', 'max:10'],
             'addresses.*.type' => ['sometimes', Rule::in(['shipping', 'billing'])],
             'addresses.*.contact_name' => ['required', 'string', 'max:180'],
