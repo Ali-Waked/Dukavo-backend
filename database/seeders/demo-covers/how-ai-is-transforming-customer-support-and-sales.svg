@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="cover-title">
+  <title id="cover-title">How AI Is Transforming Customer Support and Sales</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101a2b"/>
+      <stop offset="0.58" stop-color="#115e59"/>
+      <stop offset="1" stop-color="#115e59"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#bef264" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#bef264" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0 H0 V42" fill="none" stroke="#ffffff" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <circle cx="1110" cy="560" r="220" fill="#101a2b" opacity="0.18"/>
+  <g opacity="0.9">
+    <rect x="92" y="78" width="46" height="6" rx="3" fill="#bef264"/>
+    <text x="152" y="87" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="3.4" fill="#5eead4">DUKAVO  /  INSIGHTS</text>
+    <text x="1082" y="88" text-anchor="end" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="2.5" fill="#5eead4" opacity="0.55">04</text>
+  </g>
+  
+  <g>
+<line x1="870" y1="120" x2="965" y2="290" stroke="#5eead4" stroke-width="3" opacity=".35"/>
+<line x1="965" y1="290" x2="1090" y2="168" stroke="#5eead4" stroke-width="3" opacity=".35"/>
+<line x1="965" y1="290" x2="790" y2="330" stroke="#5eead4" stroke-width="3" opacity=".35"/>
+<line x1="965" y1="290" x2="1120" y2="370" stroke="#5eead4" stroke-width="3" opacity=".35"/>
+<line x1="965" y1="290" x2="970" y2="458" stroke="#5eead4" stroke-width="3" opacity=".35"/>
+<line x1="1090" y1="168" x2="1120" y2="370" stroke="#5eead4" stroke-width="3" opacity=".35"/>
+<circle cx="870" cy="120" r="18" fill="#5eead4" opacity="0.95"/>
+<circle cx="1090" cy="168" r="18" fill="#bef264" opacity="0.8799999999999999"/>
+<circle cx="965" cy="290" r="30" fill="#bef264" opacity="0.8099999999999999"/>
+<circle cx="965" cy="290" r="10" fill="#0b3b38" opacity=".55"/>
+<circle cx="790" cy="330" r="18" fill="#5eead4" opacity="0.74"/>
+<circle cx="1120" cy="370" r="18" fill="#bef264" opacity="0.6699999999999999"/>
+<circle cx="970" cy="458" r="18" fill="#5eead4" opacity="0.5999999999999999"/>
+  </g>
+  <g>
+    <text x="92" y="188" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">How AI Is Transforming</text><text x="92" y="250" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Customer Support and</text><text x="92" y="312" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Sales</text>
+  </g>
+  <g>
+    <rect x="92" y="484" width="52" height="3" rx="1.5" fill="#bef264"/>
+    <text x="92" y="534" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" fill="#5eead4" opacity="0.78">Practical ideas for merchants who run the business in conversation.</text>
+  </g>
+</svg>

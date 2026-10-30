@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="cover-title">
+  <title id="cover-title">Managing Inventory Efficiently for Growing Businesses</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a2b2a"/>
+      <stop offset="0.58" stop-color="#0d9488"/>
+      <stop offset="1" stop-color="#0d9488"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#a3e635" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#a3e635" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0 H0 V42" fill="none" stroke="#ffffff" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <circle cx="1110" cy="560" r="220" fill="#0a2b2a" opacity="0.18"/>
+  <g opacity="0.9">
+    <rect x="92" y="78" width="46" height="6" rx="3" fill="#a3e635"/>
+    <text x="152" y="87" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="3.4" fill="#99f6e4">DUKAVO  /  INSIGHTS</text>
+    <text x="1082" y="88" text-anchor="end" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="2.5" fill="#99f6e4" opacity="0.55">05</text>
+  </g>
+  
+  <g>
+<rect x="760" y="140" width="88" height="88" rx="16" fill="#a3e635" opacity="0.92"/>
+<path d="M778 170 L804 158 L830 170 L804 182 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M778 170 V198 L804 210 V182 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M830 170 V198 L804 210 V182 Z" fill="#0b3b38" opacity=".28"/>
+<rect x="872" y="140" width="88" height="88" rx="16" fill="#99f6e4" opacity="0.8200000000000001"/>
+<path d="M890 170 L916 158 L942 170 L916 182 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M890 170 V198 L916 210 V182 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M942 170 V198 L916 210 V182 Z" fill="#0b3b38" opacity=".28"/>
+<rect x="984" y="140" width="88" height="88" rx="16" fill="#a3e635" opacity="0.72"/>
+<path d="M1002 170 L1028 158 L1054 170 L1028 182 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M1002 170 V198 L1028 210 V182 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M1054 170 V198 L1028 210 V182 Z" fill="#0b3b38" opacity=".28"/>
+<rect x="760" y="252" width="88" height="88" rx="16" fill="#99f6e4" opacity="0.8200000000000001"/>
+<path d="M778 282 L804 270 L830 282 L804 294 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M778 282 V310 L804 322 V294 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M830 282 V310 L804 322 V294 Z" fill="#0b3b38" opacity=".28"/>
+<rect x="872" y="252" width="88" height="88" rx="16" fill="#a3e635" opacity="0.72"/>
+<path d="M890 282 L916 270 L942 282 L916 294 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M890 282 V310 L916 322 V294 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M942 282 V310 L916 322 V294 Z" fill="#0b3b38" opacity=".28"/>
+<rect x="984" y="252" width="88" height="88" rx="16" fill="#99f6e4" opacity="0.62"/>
+<path d="M1002 282 L1028 270 L1054 282 L1028 294 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M1002 282 V310 L1028 322 V294 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M1054 282 V310 L1028 322 V294 Z" fill="#0b3b38" opacity=".28"/>
+<rect x="760" y="364" width="88" height="88" rx="16" fill="#a3e635" opacity="0.72"/>
+<path d="M778 394 L804 382 L830 394 L804 406 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M778 394 V422 L804 434 V406 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M830 394 V422 L804 434 V406 Z" fill="#0b3b38" opacity=".28"/>
+<rect x="872" y="364" width="88" height="88" rx="16" fill="#99f6e4" opacity="0.62"/>
+<path d="M890 394 L916 382 L942 394 L916 406 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M890 394 V422 L916 434 V406 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M942 394 V422 L916 434 V406 Z" fill="#0b3b38" opacity=".28"/>
+<rect x="984" y="364" width="88" height="88" rx="16" fill="#a3e635" opacity="0.52"/>
+<path d="M1002 394 L1028 382 L1054 394 L1028 406 Z" fill="#0b3b38" opacity=".35"/>
+<path d="M1002 394 V422 L1028 434 V406 Z" fill="#0b3b38" opacity=".22"/>
+<path d="M1054 394 V422 L1028 434 V406 Z" fill="#0b3b38" opacity=".28"/>
+  </g>
+  <g>
+    <text x="92" y="188" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Managing Inventory</text><text x="92" y="250" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Efficiently for</text><text x="92" y="312" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Growing Businesses</text>
+  </g>
+  <g>
+    <rect x="92" y="484" width="52" height="3" rx="1.5" fill="#a3e635"/>
+    <text x="92" y="534" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" fill="#99f6e4" opacity="0.78">Practical ideas for merchants who run the business in conversation.</text>
+  </g>
+</svg>

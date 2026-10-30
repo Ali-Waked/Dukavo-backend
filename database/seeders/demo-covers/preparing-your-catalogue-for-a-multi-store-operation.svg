@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="cover-title">
+  <title id="cover-title">Preparing Your Catalogue for a Multi-Store Operation</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#132a22"/>
+      <stop offset="0.58" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#bef264" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#bef264" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0 H0 V42" fill="none" stroke="#ffffff" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <circle cx="1110" cy="560" r="220" fill="#132a22" opacity="0.18"/>
+  <g opacity="0.9">
+    <rect x="92" y="78" width="46" height="6" rx="3" fill="#bef264"/>
+    <text x="152" y="87" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="3.4" fill="#2dd4bf">DUKAVO  /  INSIGHTS</text>
+    <text x="1082" y="88" text-anchor="end" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="2.5" fill="#2dd4bf" opacity="0.55">12</text>
+  </g>
+  
+  <g>
+<circle cx="805" cy="184" r="34" fill="#2dd4bf" opacity="0.9"/>
+<circle cx="805" cy="184" r="12" fill="#0b3b38" opacity=".45"/>
+<path d="M790 238 H820 V300 H790 Z" fill="#2dd4bf" opacity="0.28"/>
+<path d="M784 230 L805 212 L826 230 Z" fill="#bef264" opacity=".8"/>
+<circle cx="938" cy="142" r="34" fill="#bef264" opacity="0.8"/>
+<circle cx="938" cy="142" r="12" fill="#0b3b38" opacity=".45"/>
+<path d="M923 196 H953 V258 H923 Z" fill="#2dd4bf" opacity="0.35000000000000003"/>
+<path d="M917 188 L938 170 L959 188 Z" fill="#bef264" opacity=".8"/>
+<circle cx="1058" cy="218" r="34" fill="#2dd4bf" opacity="0.7"/>
+<circle cx="1058" cy="218" r="12" fill="#0b3b38" opacity=".45"/>
+<path d="M1043 272 H1073 V334 H1043 Z" fill="#2dd4bf" opacity="0.42000000000000004"/>
+<path d="M1037 264 L1058 246 L1079 264 Z" fill="#bef264" opacity=".8"/>
+<path d="M805 184 C860 120 900 120 938 142 C980 166 1016 190 1058 218" fill="none" stroke="#bef264" stroke-width="4" stroke-dasharray="8 12" stroke-linecap="round" opacity=".6"/>
+  </g>
+  <g>
+    <text x="92" y="188" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Preparing Your</text><text x="92" y="250" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Catalogue for a</text><text x="92" y="312" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Multi-Store Operation</text>
+  </g>
+  <g>
+    <rect x="92" y="484" width="52" height="3" rx="1.5" fill="#bef264"/>
+    <text x="92" y="534" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" fill="#2dd4bf" opacity="0.78">Practical ideas for merchants who run the business in conversation.</text>
+  </g>
+</svg>

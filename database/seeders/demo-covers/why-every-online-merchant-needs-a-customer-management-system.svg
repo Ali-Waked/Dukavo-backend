@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="cover-title">
+  <title id="cover-title">Why Every Online Merchant Needs a Customer Management System</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#082f2c"/>
+      <stop offset="0.58" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#a3e635" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#a3e635" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0 H0 V42" fill="none" stroke="#ffffff" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <circle cx="1110" cy="560" r="220" fill="#082f2c" opacity="0.18"/>
+  <g opacity="0.9">
+    <rect x="92" y="78" width="46" height="6" rx="3" fill="#a3e635"/>
+    <text x="152" y="87" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="3.4" fill="#5eead4">DUKAVO  /  INSIGHTS</text>
+    <text x="1082" y="88" text-anchor="end" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="2.5" fill="#5eead4" opacity="0.55">07</text>
+  </g>
+  
+  <g transform="translate(735 150)">
+    <rect x="30" y="0" width="340" height="300" rx="28" fill="#5eead4" opacity=".9"/>
+    <circle cx="112" cy="92" r="46" fill="#a3e635" opacity=".95"/>
+    <circle cx="112" cy="82" r="17" fill="#0b3b38" opacity=".45"/>
+    <path d="M82 118 C86 100 138 100 142 118" fill="#0b3b38" opacity=".35"/>
+    <rect x="188" y="58" width="132" height="14" rx="7" fill="#0b3b38" opacity=".55"/>
+    <rect x="188" y="86" width="96" height="10" rx="5" fill="#0b3b38" opacity=".32"/>
+    <rect x="188" y="130" width="142" height="10" rx="5" fill="#0b3b38" opacity=".28"/>
+    <rect x="60" y="190" width="282" height="1" fill="#0b3b38" opacity=".18"/>
+    <rect x="60" y="218" width="110" height="12" rx="6" fill="#0b3b38" opacity=".38"/>
+    <rect x="60" y="244" width="180" height="10" rx="5" fill="#0b3b38" opacity=".24"/>
+    <circle cx="336" cy="50" r="16" fill="#a3e635" opacity=".8"/>
+  </g>
+  <g>
+    <text x="92" y="188" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Why Every Online Merchant</text><text x="92" y="250" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Needs a Customer Management</text><text x="92" y="312" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">System</text>
+  </g>
+  <g>
+    <rect x="92" y="484" width="52" height="3" rx="1.5" fill="#a3e635"/>
+    <text x="92" y="534" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" fill="#5eead4" opacity="0.78">Practical ideas for merchants who run the business in conversation.</text>
+  </g>
+</svg>

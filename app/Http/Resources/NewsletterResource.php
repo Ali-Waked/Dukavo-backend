@@ -32,6 +32,7 @@ class NewsletterResource extends JsonResource
             'status_label' => $this->status->label(),
             'meta_title' => $this->meta_title,
             'meta_description' => $this->meta_description,
+            'reading_minutes' => $this->readingMinutes(),
             'published_at' => $this->published_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

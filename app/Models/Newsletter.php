@@ -84,6 +84,25 @@ class Newsletter extends Model
     }
 
     /**
+     * Estimated reading time in whole minutes, at roughly 200 words per minute.
+     * The body is sanitised HTML, so tags and entities are stripped before
+     * counting; an empty edition still reports one minute rather than zero.
+     */
+    public function readingMinutes(): int
+    {
+        $text = html_entity_decode($this->body ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = trim((string) preg_replace('/\s+/u', ' ', strip_tags($text)));
+
+        if ($text === '') {
+            return 1;
+        }
+
+        $words = preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return max(1, (int) ceil(count($words) / 200));
+    }
+
+    /**
      * @param  Builder<self>  $query
      */
     #[Scope]

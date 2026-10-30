@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="cover-title">
+  <title id="cover-title">How WhatsApp Commerce Is Changing Online Shopping</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#082f2c"/>
+      <stop offset="0.58" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#a3e635" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#a3e635" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0 H0 V42" fill="none" stroke="#ffffff" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <circle cx="1110" cy="560" r="220" fill="#082f2c" opacity="0.18"/>
+  <g opacity="0.9">
+    <rect x="92" y="78" width="46" height="6" rx="3" fill="#a3e635"/>
+    <text x="152" y="87" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="3.4" fill="#5eead4">DUKAVO  /  INSIGHTS</text>
+    <text x="1082" y="88" text-anchor="end" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="2.5" fill="#5eead4" opacity="0.55">01</text>
+  </g>
+  
+  <g transform="translate(735 150)">
+    <rect x="0" y="0" width="250" height="120" rx="28" fill="#5eead4" opacity=".92"/>
+    <path d="M44 118 L54 158 L88 118 Z" fill="#5eead4" opacity=".92"/>
+    <g fill="#0b3b38" opacity=".55">
+      <rect x="36" y="38" width="170" height="10" rx="5"/>
+      <rect x="36" y="62" width="128" height="10" rx="5"/>
+      <rect x="36" y="86" width="92" height="10" rx="5"/>
+    </g>
+    <rect x="125" y="150" width="250" height="112" rx="26" fill="#a3e635" opacity=".95"/>
+    <path d="M335 258 L350 296 L308 258 Z" fill="#a3e635" opacity=".95"/>
+    <g fill="#0b3b38" opacity=".6">
+      <rect x="158" y="184" width="170" height="10" rx="5"/>
+      <rect x="158" y="208" width="116" height="10" rx="5"/>
+    </g>
+    <circle cx="366" cy="82" r="13" fill="#a3e635"/>
+    <circle cx="404" cy="82" r="13" fill="#a3e635" opacity=".65"/>
+    <circle cx="442" cy="82" r="13" fill="#a3e635" opacity=".35"/>
+  </g>
+  <g>
+    <text x="92" y="188" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">How WhatsApp Commerce</text><text x="92" y="250" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Is Changing Online</text><text x="92" y="312" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Shopping</text>
+  </g>
+  <g>
+    <rect x="92" y="484" width="52" height="3" rx="1.5" fill="#a3e635"/>
+    <text x="92" y="534" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" fill="#5eead4" opacity="0.78">Practical ideas for merchants who run the business in conversation.</text>
+  </g>
+</svg>

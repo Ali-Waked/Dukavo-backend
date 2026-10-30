@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="cover-title">
+  <title id="cover-title">The Importance of Data-Driven Decisions in E-commerce</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#102b24"/>
+      <stop offset="0.58" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#a3e635" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#a3e635" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0 H0 V42" fill="none" stroke="#ffffff" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <circle cx="1110" cy="560" r="220" fill="#102b24" opacity="0.18"/>
+  <g opacity="0.9">
+    <rect x="92" y="78" width="46" height="6" rx="3" fill="#a3e635"/>
+    <text x="152" y="87" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="3.4" fill="#2dd4bf">DUKAVO  /  INSIGHTS</text>
+    <text x="1082" y="88" text-anchor="end" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="2.5" fill="#2dd4bf" opacity="0.55">09</text>
+  </g>
+  
+  <g>
+<rect x="762" y="360" width="40" height="70" rx="10" fill="#2dd4bf" opacity="0.55"/>
+<rect x="828" y="312" width="40" height="118" rx="10" fill="#2dd4bf" opacity="0.64"/>
+<rect x="894" y="270" width="40" height="160" rx="10" fill="#2dd4bf" opacity="0.73"/>
+<rect x="960" y="220" width="40" height="210" rx="10" fill="#2dd4bf" opacity="0.8200000000000001"/>
+<rect x="1026" y="162" width="40" height="268" rx="10" fill="#a3e635" opacity="0.91"/>
+<path d="M772 310 L836 276 L902 288 L968 214 L1038 170" fill="none" stroke="#2dd4bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+<circle cx="772" cy="310" r="8" fill="#a3e635"/>
+<circle cx="836" cy="276" r="8" fill="#a3e635"/>
+<circle cx="902" cy="288" r="8" fill="#a3e635"/>
+<circle cx="968" cy="214" r="8" fill="#a3e635"/>
+<circle cx="1038" cy="170" r="8" fill="#a3e635"/>
+  </g>
+  <g>
+    <text x="92" y="188" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">The Importance of</text><text x="92" y="250" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Data-Driven Decisions</text><text x="92" y="312" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">in E-commerce</text>
+  </g>
+  <g>
+    <rect x="92" y="484" width="52" height="3" rx="1.5" fill="#a3e635"/>
+    <text x="92" y="534" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" fill="#2dd4bf" opacity="0.78">Practical ideas for merchants who run the business in conversation.</text>
+  </g>
+</svg>

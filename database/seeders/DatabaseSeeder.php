@@ -45,6 +45,8 @@ class DatabaseSeeder extends Seeder
             AuditLogSeeder::class,
             MarketingContentSeeder::class,
             ContentPageSeeder::class,
+            BlogSeeder::class,
+            NewsletterSeeder::class,
         ]);
 
         // Permission answers come from a cached role catalogue; drop it so the

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="cover-title">
+  <title id="cover-title">How to Build a Scalable Online Business</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101a2b"/>
+      <stop offset="0.58" stop-color="#115e59"/>
+      <stop offset="1" stop-color="#115e59"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#bef264" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#bef264" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M42 0 H0 V42" fill="none" stroke="#ffffff" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <circle cx="1110" cy="560" r="220" fill="#101a2b" opacity="0.18"/>
+  <g opacity="0.9">
+    <rect x="92" y="78" width="46" height="6" rx="3" fill="#bef264"/>
+    <text x="152" y="87" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="3.4" fill="#5eead4">DUKAVO  /  INSIGHTS</text>
+    <text x="1082" y="88" text-anchor="end" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="2.5" fill="#5eead4" opacity="0.55">10</text>
+  </g>
+  
+  <g>
+<rect x="760" y="360" width="92" height="70" rx="14" fill="#5eead4" opacity="0.55"/>
+<path d="M852 386 L826 376" stroke="#0b3b38" stroke-width="4" opacity=".28"/>
+<rect x="858" y="306" width="92" height="124" rx="14" fill="#bef264" opacity="0.67"/>
+<path d="M950 332 L924 322" stroke="#0b3b38" stroke-width="4" opacity=".28"/>
+<rect x="956" y="248" width="92" height="182" rx="14" fill="#5eead4" opacity="0.79"/>
+<path d="M1048 274 L1022 264" stroke="#0b3b38" stroke-width="4" opacity=".28"/>
+<rect x="1054" y="186" width="86" height="244" rx="14" fill="#bef264" opacity="0.91"/>
+<path d="M1140 212 L1114 202" stroke="#0b3b38" stroke-width="4" opacity=".28"/>
+<path d="M760 160 C850 120 960 112 1058 64" fill="none" stroke="#bef264" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 16" opacity=".85"/>
+  </g>
+  <g>
+    <text x="92" y="218" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">How to Build a Scalable</text><text x="92" y="280" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="52" font-weight="600" letter-spacing="-1.4" fill="#f8fafc">Online Business</text>
+  </g>
+  <g>
+    <rect x="92" y="484" width="52" height="3" rx="1.5" fill="#bef264"/>
+    <text x="92" y="534" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" fill="#5eead4" opacity="0.78">Practical ideas for merchants who run the business in conversation.</text>
+  </g>
+</svg>

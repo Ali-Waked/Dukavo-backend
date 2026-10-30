@@ -32,6 +32,7 @@ class NewsletterSummaryResource extends JsonResource
             'cover_image_url' => $this->coverImageUrl(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
+            'reading_minutes' => $this->readingMinutes(),
             'published_at' => $this->published_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
