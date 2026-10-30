@@ -10,7 +10,7 @@ use Laravel\Fortify\Contracts\PasswordResetResponse as PasswordResetResponseCont
 
 class PasswordResetResponse implements PasswordResetResponseContract
 {
-    public function toResponse($request, $status): JsonResponse
+    public function toResponse($request): JsonResponse
     {
         return ApiResponse::success('Your password has been reset. You may now sign in.');
     }

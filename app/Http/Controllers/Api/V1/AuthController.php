@@ -128,6 +128,8 @@ class AuthController extends Controller
             'id' => $tenant->getKey(),
             'name' => $tenant->name,
             'slug' => $tenant->slug,
+            'status' => $tenant->status->value,
+            'is_active' => $tenant->isActive(),
             'currency' => $tenant->currency,
             'timezone' => $tenant->timezone,
             'locale' => $tenant->locale,

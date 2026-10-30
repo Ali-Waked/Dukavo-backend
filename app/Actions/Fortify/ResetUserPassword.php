@@ -2,6 +2,7 @@
 
 namespace App\Actions\Fortify;
 
+use App\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -25,8 +26,17 @@ class ResetUserPassword implements ResetsUserPasswords
             'password' => $this->passwordRules(),
         ])->validate();
 
-        $user->forceFill([
+        $attributes = [
             'password' => Hash::make($input['password']),
-        ])->save();
+        ];
+
+        // Setting a password is how an invited account accepts its invitation.
+        // It is the only transition that makes the invitation real, so it also
+        // clears the pending state that keeps the dashboard closed.
+        if ($user->status === UserStatus::Invited) {
+            $attributes['status'] = UserStatus::Active;
+        }
+
+        $user->forceFill($attributes)->save();
     }
 }

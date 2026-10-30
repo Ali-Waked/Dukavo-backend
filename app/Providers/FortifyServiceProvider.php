@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Exceptions\AccountSuspendedException;
 use App\Http\Responses\Auth\LoginResponse;
 use App\Http\Responses\Auth\RegisterResponse;
 use App\Models\User;
@@ -40,8 +41,10 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::createUsersUsing(CreateNewUser::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
 
-        // Rejecting suspended users at the credential-check stage keeps the
-        // decision in one place instead of scattering status checks around.
+        // Credentials and account status are decided together, but the status
+        // refusal happens only after the password matches. Someone who does not
+        // know the password sees the same generic failure as any other account;
+        // the owner sees why their correct credentials cannot open a session.
         Fortify::authenticateUsing(function (Request $request): ?User {
             $user = User::query()
                 ->where('email', $request->input(Fortify::username()))
@@ -51,7 +54,11 @@ class FortifyServiceProvider extends ServiceProvider
                 return null;
             }
 
-            return $user->status->canAuthenticate() ? $user : null;
+            if (! $user->status->canAuthenticate()) {
+                throw new AccountSuspendedException;
+            }
+
+            return $user;
         });
 
         // The SPA authenticates with a bearer token rather than a session cookie,
