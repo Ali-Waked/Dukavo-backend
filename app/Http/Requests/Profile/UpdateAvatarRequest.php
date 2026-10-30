@@ -5,19 +5,19 @@ declare(strict_types=1);
 namespace App\Http\Requests\Profile;
 
 use App\Http\Requests\ApiRequest;
+use Closure;
+use Illuminate\Http\UploadedFile;
 
-/**
- * Avatar upload.
- *
- * Bounded to 2 MB and to the formats every browser renders natively (including
- * webp). The file is stored as-is — Dukavo ships no image processing library, so
- * promising a resized thumbnail would be a promise the code cannot keep. Content
- * is verified through MIME sniffing rather than the `image` rule: that rule
- * needs GD's getimagesize, which renders the endpoint untestable (and
- * un-servable) on GD-less PHP builds.
- */
 class UpdateAvatarRequest extends ApiRequest
 {
+    private const MAX_DIMENSION = 8192;
+
+    private const ALLOWED_TYPES = [
+        IMAGETYPE_JPEG,
+        IMAGETYPE_PNG,
+        IMAGETYPE_WEBP,
+    ];
+
     public function authorize(): bool
     {
         return true;
@@ -29,7 +29,40 @@ class UpdateAvatarRequest extends ApiRequest
     public function rules(): array
     {
         return [
-            'avatar' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'avatar' => [
+                'required',
+                'file',
+                'mimes:jpg,jpeg,png,webp',
+                'max:2048',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (! $value instanceof UploadedFile) {
+                        $fail('The avatar must be a valid image file.');
+
+                        return;
+                    }
+
+                    $path = $value->getRealPath();
+                    $dimensions = $path === false ? false : @getimagesize($path);
+
+                    if ($dimensions === false) {
+                        $fail('The avatar must be a readable JPG, PNG or WebP image.');
+
+                        return;
+                    }
+
+                    [$width, $height, $type] = $dimensions;
+
+                    if (! in_array($type, self::ALLOWED_TYPES, true)) {
+                        $fail('The avatar must be a JPG, PNG or WebP image.');
+
+                        return;
+                    }
+
+                    if ($width < 1 || $height < 1 || $width > self::MAX_DIMENSION || $height > self::MAX_DIMENSION) {
+                        $fail('The avatar dimensions are not supported.');
+                    }
+                },
+            ],
         ];
     }
 }

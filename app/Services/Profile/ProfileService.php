@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
+use RuntimeException;
 
 /**
  * Everything a user may change about their *own* account.
@@ -46,22 +47,31 @@ class ProfileService
         return $user;
     }
 
-    /**
-     * Replace the avatar. The old file is removed first so a re-upload does not
-     * accumulate orphaned images on the disk.
-     */
     public function storeAvatar(User $user, UploadedFile $file): User
     {
-        $this->deleteAvatarFile($user);
-
+        $previous = $user->avatar_path;
         $path = $file->store('avatars/'.$user->getKey(), self::AVATAR_DISK);
 
-        $user->forceFill(['avatar_path' => $path])->save();
+        if ($path === false) {
+            throw new RuntimeException('The avatar could not be stored.');
+        }
+
+        try {
+            $user->forceFill(['avatar_path' => $path])->save();
+        } catch (\Throwable $exception) {
+            $this->deleteAvatarPath($path);
+
+            throw $exception;
+        }
 
         $this->audit->record(AuditAction::Updated, $user, [
-            'old' => ['avatar_path' => null],
+            'old' => ['avatar_path' => $previous],
             'new' => ['avatar_path' => $path],
         ], $user);
+
+        if ($previous !== null && $previous !== $path) {
+            $this->deleteAvatarPath($previous);
+        }
 
         return $user;
     }
@@ -73,7 +83,6 @@ class ProfileService
         }
 
         $previous = $user->avatar_path;
-        $this->deleteAvatarFile($user);
 
         $user->forceFill(['avatar_path' => null])->save();
 
@@ -81,6 +90,8 @@ class ProfileService
             'old' => ['avatar_path' => $previous],
             'new' => ['avatar_path' => null],
         ], $user);
+
+        $this->deleteAvatarPath($previous);
 
         return $user;
     }
@@ -155,10 +166,10 @@ class ProfileService
         return $user->tokens()->delete();
     }
 
-    private function deleteAvatarFile(User $user): void
+    private function deleteAvatarPath(?string $path): void
     {
-        if ($user->avatar_path !== null && $user->avatar_path !== '') {
-            Storage::disk(self::AVATAR_DISK)->delete($user->avatar_path);
+        if ($path !== null && $path !== '') {
+            Storage::disk(self::AVATAR_DISK)->delete($path);
         }
     }
 }
