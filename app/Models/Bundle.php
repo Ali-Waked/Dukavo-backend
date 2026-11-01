@@ -46,7 +46,7 @@ class Bundle extends Model
         return [
             'status' => BundleStatus::class,
             'discount_type' => BundleDiscountType::class,
-            'discount_value' => 'decimal:2',
+            'discount_value' => 'decimal:4',
         ];
     }
 

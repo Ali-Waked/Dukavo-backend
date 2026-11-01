@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Inventory is tracked per store, which is why a tenant always owns at least
  * one store (created together with the tenant).
  */
-#[Fillable(['tenant_id', 'name', 'slug', 'status', 'email', 'phone', 'currency', 'timezone', 'is_default'])]
+#[Fillable(['tenant_id', 'name', 'slug', 'status', 'email', 'phone', 'currency', 'currency_decimals', 'currency_updated_at', 'timezone', 'is_default'])]
 class Store extends Model
 {
     /** @use HasFactory<StoreFactory> */
@@ -32,7 +32,7 @@ class Store extends Model
      */
     protected function auditAttributes(): array
     {
-        return ['name', 'slug', 'status', 'currency', 'timezone', 'is_default'];
+        return ['name', 'slug', 'status', 'currency', 'currency_decimals', 'timezone', 'is_default'];
     }
 
     protected function casts(): array
@@ -40,6 +40,8 @@ class Store extends Model
         return [
             'status' => StoreStatus::class,
             'is_default' => 'boolean',
+            'currency_decimals' => 'integer',
+            'currency_updated_at' => 'datetime',
         ];
     }
 

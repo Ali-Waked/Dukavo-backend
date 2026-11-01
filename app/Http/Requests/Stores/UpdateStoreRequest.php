@@ -34,7 +34,7 @@ class UpdateStoreRequest extends ApiRequest
             'status' => ['sometimes', Rule::enum(StoreStatus::class)],
             'email' => ['sometimes', 'nullable', 'email:rfc', 'max:190'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:32'],
-            'currency' => ['sometimes', 'string', 'size:3', 'uppercase'],
+            'currency' => ['sometimes', 'string', 'size:3', 'uppercase', Rule::in(array_keys((array) config('dukavo.currencies.supported', [])))],
             'timezone' => ['sometimes', 'timezone'],
             'is_default' => ['sometimes', 'boolean'],
         ];

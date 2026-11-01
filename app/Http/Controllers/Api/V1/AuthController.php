@@ -130,7 +130,9 @@ class AuthController extends Controller
             'slug' => $tenant->slug,
             'status' => $tenant->status->value,
             'is_active' => $tenant->isActive(),
-            'currency' => $tenant->currency,
+            // The store's base currency is authoritative; the tenant column is
+            // the fallback for a workspace whose stores have not been loaded.
+            'currency' => (string) ($tenant->stores()->where('is_default', true)->value('currency') ?? $tenant->currency),
             'timezone' => $tenant->timezone,
             'locale' => $tenant->locale,
         ];

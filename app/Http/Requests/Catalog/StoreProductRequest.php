@@ -39,7 +39,7 @@ class StoreProductRequest extends ApiRequest
             'status' => ['sometimes', Rule::enum(ProductStatus::class)],
             'price' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'cost' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
-            'currency' => ['nullable', 'string', 'size:3', 'uppercase'],
+            'currency' => ['nullable', 'string', 'size:3', 'uppercase', Rule::in(array_keys((array) config('dukavo.currencies.supported', [])))],
             'is_taxable' => ['sometimes', 'boolean'],
             'category_id' => ['nullable', 'integer', $this->tenantExists(Category::class)],
             'store_id' => ['nullable', 'integer', $this->tenantExists(Store::class)],

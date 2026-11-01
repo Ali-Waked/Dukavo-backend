@@ -31,7 +31,7 @@ class UpdateTenantSettingsRequest extends ApiRequest
             'name' => ['sometimes', 'string', 'min:1', 'max:120'],
             'contact_email' => ['sometimes', 'nullable', 'email:rfc', 'max:190'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:32'],
-            'currency' => ['sometimes', 'string', 'size:3', 'uppercase'],
+            'currency' => ['sometimes', 'string', 'size:3', 'uppercase', Rule::in(array_keys((array) config('dukavo.currencies.supported', [])))],
             'timezone' => ['sometimes', 'timezone'],
             'locale' => ['sometimes', 'string', Rule::in(config('dukavo.locales.supported'))],
         ];

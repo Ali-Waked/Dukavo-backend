@@ -8,6 +8,7 @@ use App\Enums\StoreStatus;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\Store;
 use App\Models\Tenant;
+use App\Services\Currency\CurrencyCatalog;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,10 @@ use Illuminate\Validation\ValidationException;
  */
 class StoreService
 {
-    public function __construct(private readonly TenantContext $tenants) {}
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly CurrencyCatalog $currencies,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $attributes
@@ -39,13 +43,18 @@ class StoreService
                     $slug = $this->uniqueSlug($tenant, $attributes['name']);
                 }
 
+                $currency = $this->currencies->supports($attributes['currency'] ?? null)
+                    ? strtoupper((string) $attributes['currency'])
+                    : ($this->currencies->supports($tenant->currency) ? strtoupper((string) $tenant->currency) : $this->currencies->default());
+
                 $store = $tenant->stores()->create([
                     'name' => $attributes['name'],
                     'slug' => $slug,
                     'status' => $attributes['status'] ?? StoreStatus::Active,
                     'email' => $attributes['email'] ?? null,
                     'phone' => $attributes['phone'] ?? null,
-                    'currency' => $attributes['currency'] ?? $tenant->currency,
+                    'currency' => $currency,
+                    'currency_decimals' => $this->currencies->decimals($currency),
                     'timezone' => $attributes['timezone'] ?? $tenant->timezone,
                     'is_default' => (bool) ($attributes['is_default'] ?? false),
                 ]);
@@ -82,6 +91,20 @@ class StoreService
         if (array_key_exists('is_default', $attributes) && ! $attributes['is_default'] && $store->is_default) {
             throw BusinessRuleViolation::because('A tenant must always keep a default store.');
         }
+
+        // A base currency is not an ordinary editable field: changing it without
+        // converting prices would relabel every amount. The dedicated currency
+        // endpoint is the only path that may change it.
+        if (array_key_exists('currency', $attributes)
+            && strtoupper((string) $attributes['currency']) !== strtoupper((string) $store->currency)) {
+            throw BusinessRuleViolation::because(
+                'Use the store currency conversion endpoint to change the base currency.',
+                ['currency' => $attributes['currency']],
+                'currency_requires_conversion',
+            );
+        }
+
+        unset($attributes['currency'], $attributes['currency_decimals']);
 
         try {
             return DB::transaction(function () use ($store, $attributes): Store {

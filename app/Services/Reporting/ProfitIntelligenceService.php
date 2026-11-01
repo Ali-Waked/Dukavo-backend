@@ -9,6 +9,7 @@ use App\Enums\PaymentStatus;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Store;
+use App\Services\Currency\StoreCurrencyService;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -30,7 +31,10 @@ use Illuminate\Support\Collection;
  */
 class ProfitIntelligenceService
 {
-    public function __construct(private readonly TenantContext $tenants) {}
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly StoreCurrencyService $currencies,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -45,8 +49,10 @@ class ProfitIntelligenceService
         $context = $this->context($currency);
         [$utcFrom, $utcUntil] = $this->utcBounds($from, $until, $context['timezone']);
 
-        $orderRows = $this->orderRows($store, $currency, $utcFrom, $utcUntil, $context['timezone']);
-        $products = $this->productRows($store, $currency, $utcFrom, $utcUntil, $productLimit);
+        $rates = $this->reportingRates($currency, $utcFrom, $utcUntil);
+
+        $orderRows = $this->orderRows($store, $rates, $utcFrom, $utcUntil, $context['timezone']);
+        $products = $this->productRows($store, $rates, $utcFrom, $utcUntil, $productLimit);
         $summary = $this->summary($orderRows);
         $recognised = $orderRows->where('is_recognized', true)->values();
         $refunded = $orderRows
@@ -63,9 +69,18 @@ class ProfitIntelligenceService
 
         $limitations = $this->limitations($summary);
 
+        if ($this->hasUnconvertibleCurrencies($rates)) {
+            $limitations[] = [
+                'code' => 'historical_currency_unconvertible',
+                'severity' => 'warning',
+                'affects' => ['revenue', 'net_sales', 'gross_profit'],
+            ];
+        }
+
         return [
             'currency' => $currency,
             'currencies' => $this->currencies($currency),
+            'exchange_rates' => $rates,
             'range' => $range,
             'summary' => $summary,
             'series' => $this->series($recognised, $range, $context['timezone']),
@@ -93,6 +108,7 @@ class ProfitIntelligenceService
                 'shipping_treatment' => 'revenue_reported_separately_cost_not_recorded',
                 'cost_source' => 'order_item_cost_snapshot',
                 'currency' => $currency,
+                'currency_policy' => 'historical_amounts_converted_with_stored_snapshot_rate',
                 'timezone' => $context['timezone'],
                 'excluded_order_statuses' => $this->excludedOrderStatuses(),
                 'excluded_payment_statuses' => $this->excludedPaymentStatuses(),
@@ -115,8 +131,9 @@ class ProfitIntelligenceService
     ): array {
         $context = $this->context($currency);
         [$utcFrom, $utcUntil] = $this->utcBounds($from, $until, $context['timezone']);
+        $rates = $this->reportingRates($currency, $utcFrom, $utcUntil);
 
-        return $this->orderRows($store, $currency, $utcFrom, $utcUntil, $context['timezone'])
+        return $this->orderRows($store, $rates, $utcFrom, $utcUntil, $context['timezone'])
             ->map(fn (array $row): array => [
                 'order_number' => $row['order_number'],
                 'store' => $row['store_name'],
@@ -124,6 +141,8 @@ class ProfitIntelligenceService
                 'status' => $row['status'],
                 'payment_status' => $row['payment_status'],
                 'currency' => $row['currency'],
+                'reporting_currency' => $currency,
+                'exchange_rate' => $row['exchange_rate'],
                 'recognized' => $row['is_recognized'] ? 'yes' : 'no',
                 'gross_sales' => $row['subtotal'],
                 'discounts' => $row['discount_total'],
@@ -167,6 +186,58 @@ class ProfitIntelligenceService
     }
 
     /**
+     * A reporting rate for every currency present in the range.
+     *
+     * Historical orders keep the currency they were placed in. To express them
+     * in the selected reporting currency, each one is converted with the rate
+     * snapshot recorded when the store changed currency — never with a live
+     * quote, which would silently restate past revenue every time the market
+     * moved. A currency with no stored conversion is `null` and is reported as
+     * unconvertible instead of being guessed at.
+     *
+     * @return array<string, float|null>
+     */
+    private function reportingRates(
+        string $reportingCurrency,
+        CarbonImmutable $from,
+        CarbonImmutable $until,
+    ): array {
+        $reportingCurrency = strtoupper($reportingCurrency);
+
+        $codes = Order::query()
+            ->whereNotNull('placed_at')
+            ->whereBetween('placed_at', [$from, $until])
+            ->distinct()
+            ->pluck('currency')
+            ->map(fn (mixed $code): string => strtoupper((string) $code))
+            ->push($reportingCurrency)
+            ->unique()
+            ->values();
+
+        $rates = [];
+
+        foreach ($codes as $code) {
+            if ($code === $reportingCurrency) {
+                $rates[$code] = 1.0;
+
+                continue;
+            }
+
+            $rates[$code] = $this->currencies->storedRate($code, $reportingCurrency)?->rate;
+        }
+
+        return $rates;
+    }
+
+    /**
+     * @param  array<string, float|null>  $rates
+     */
+    private function hasUnconvertibleCurrencies(array $rates): bool
+    {
+        return collect($rates)->contains(fn (?float $rate): bool => $rate === null);
+    }
+
+    /**
      * @return array{name: string, currency: string, timezone: string}
      */
     private function context(string $currency): array
@@ -199,11 +270,12 @@ class ProfitIntelligenceService
     }
 
     /**
+     * @param  array<string, float|null>  $rates  Order currency → reporting rate.
      * @return Collection<int, array<string, mixed>>
      */
     private function orderRows(
         ?Store $store,
-        string $currency,
+        array $rates,
         CarbonImmutable $from,
         CarbonImmutable $until,
         string $timezone,
@@ -212,16 +284,17 @@ class ProfitIntelligenceService
             ->with(['store:id,name'])
             ->whereNotNull('placed_at')
             ->whereBetween('placed_at', [$from, $until])
-            ->where('currency', $currency)
             ->when($store, fn (Builder $query) => $query->where('store_id', $store->getKey()))
             ->get();
 
-        $costs = $this->costsByOrder($store, $currency, $from, $until);
+        $costs = $this->costsByOrder($store, $from, $until);
 
         return $orders
+            ->filter(fn (Order $order): bool => ($rates[strtoupper((string) $order->currency)] ?? null) !== null)
             ->map(fn (Order $order): array => $this->shapeOrder(
                 $order,
                 $costs->get($order->getKey()),
+                (float) $rates[strtoupper((string) $order->currency)],
                 $timezone,
             ))
             ->sortBy('placed_at')
@@ -235,7 +308,6 @@ class ProfitIntelligenceService
      */
     private function costsByOrder(
         ?Store $store,
-        string $currency,
         CarbonImmutable $from,
         CarbonImmutable $until,
     ): Collection {
@@ -245,7 +317,6 @@ class ProfitIntelligenceService
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('orders.tenant_id', $tenantId)
             ->whereNull('orders.deleted_at')
-            ->where('orders.currency', $currency)
             ->whereBetween('orders.placed_at', [$from, $until])
             ->when($store, fn (Builder $query) => $query->where('orders.store_id', $store->getKey()))
             ->selectRaw('orders.id as order_id')
@@ -261,18 +332,18 @@ class ProfitIntelligenceService
     /**
      * @return array<string, mixed>
      */
-    private function shapeOrder(Order $order, ?object $cost, string $timezone): array
+    private function shapeOrder(Order $order, ?object $cost, float $rate, string $timezone): array
     {
         $status = $order->status->value;
         $paymentStatus = $order->payment_status->value;
         $recognized = ! in_array($status, $this->excludedOrderStatuses(), true)
             && ! in_array($paymentStatus, $this->excludedPaymentStatuses(), true);
 
-        $subtotal = $this->money($order->subtotal);
-        $discount = $this->money($order->discount_total);
+        $subtotal = $this->money((float) $order->subtotal * $rate);
+        $discount = $this->money((float) $order->discount_total * $rate);
         $netSales = $this->money($subtotal - $discount);
         $units = (int) ($cost->units ?? 0);
-        $cogs = $this->money($cost->cogs ?? 0);
+        $cogs = $this->money((float) ($cost->cogs ?? 0) * $rate);
         $uncostedUnits = (int) ($cost->uncosted_units ?? 0);
         $costComplete = $units > 0 && $uncostedUnits === 0;
         $placedAt = CarbonImmutable::parse($order->placed_at);
@@ -287,17 +358,18 @@ class ProfitIntelligenceService
             'status' => $status,
             'payment_status' => $paymentStatus,
             'currency' => strtoupper((string) $order->currency),
+            'exchange_rate' => $rate,
             'subtotal' => $subtotal,
             'discount_total' => $discount,
             'net_sales' => $netSales,
-            'tax_total' => $this->money($order->tax_total),
-            'shipping_total' => $this->money($order->shipping_total),
-            'grand_total' => $this->money($order->grand_total),
+            'tax_total' => $this->money((float) $order->tax_total * $rate),
+            'shipping_total' => $this->money((float) $order->shipping_total * $rate),
+            'grand_total' => $this->money((float) $order->grand_total * $rate),
             'is_recognized' => $recognized,
             'units' => $units,
             'cogs' => $recognized ? $cogs : null,
             'uncosted_units' => $uncostedUnits,
-            'uncosted_net_sales' => $this->money($cost->uncosted_net_sales ?? 0),
+            'uncosted_net_sales' => $this->money((float) ($cost->uncosted_net_sales ?? 0) * $rate),
             'cost_complete' => $recognized && $costComplete,
             'gross_profit' => $recognized && $costComplete ? $this->money($netSales - $cogs) : null,
         ];
@@ -424,27 +496,27 @@ class ProfitIntelligenceService
     }
 
     /**
+     * @param  array<string, float|null>  $rates  Order currency → reporting rate.
      * @return list<array<string, mixed>>
      */
     private function productRows(
         ?Store $store,
-        string $currency,
+        array $rates,
         CarbonImmutable $from,
         CarbonImmutable $until,
         int $limit,
     ): array {
         $tenantId = (int) $this->tenants->required()->getKey();
 
-        return OrderItem::query()
+        $rows = OrderItem::query()
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('orders.tenant_id', $tenantId)
             ->whereNull('orders.deleted_at')
-            ->where('orders.currency', $currency)
             ->whereBetween('orders.placed_at', [$from, $until])
             ->whereNotIn('orders.status', $this->excludedOrderStatuses())
             ->whereNotIn('orders.payment_status', $this->excludedPaymentStatuses())
             ->when($store, fn (Builder $query) => $query->where('orders.store_id', $store->getKey()))
-            ->selectRaw('order_items.product_id, order_items.name, order_items.sku')
+            ->selectRaw('order_items.product_id, order_items.name, order_items.sku, orders.currency as order_currency')
             ->selectRaw('COUNT(DISTINCT orders.id) as orders')
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as units')
             ->selectRaw('COALESCE(SUM(order_items.unit_price * order_items.quantity), 0) as gross_sales')
@@ -453,31 +525,74 @@ class ProfitIntelligenceService
             ->selectRaw('COALESCE(SUM(CASE WHEN order_items.unit_cost IS NOT NULL AND order_items.cost_currency = orders.currency THEN order_items.unit_cost * order_items.quantity ELSE 0 END), 0) as cogs')
             ->selectRaw('COALESCE(SUM(CASE WHEN order_items.unit_cost IS NULL OR order_items.cost_currency IS NULL OR order_items.cost_currency <> orders.currency THEN order_items.quantity ELSE 0 END), 0) as uncosted_units')
             ->selectRaw('COALESCE(SUM(CASE WHEN order_items.unit_cost IS NULL OR order_items.cost_currency IS NULL OR order_items.cost_currency <> orders.currency THEN (order_items.unit_price * order_items.quantity) - order_items.discount_total ELSE 0 END), 0) as uncosted_net_sales')
-            ->groupBy('order_items.product_id', 'order_items.name', 'order_items.sku')
-            ->orderByDesc('net_sales')
-            ->limit($limit)
-            ->get()
-            ->map(function (OrderItem $item): array {
-                $units = (int) $item->getAttribute('units');
-                $uncostedUnits = (int) $item->getAttribute('uncosted_units');
-                $netSales = $this->money($item->getAttribute('net_sales'));
-                $cogs = $this->money($item->getAttribute('cogs'));
+            ->groupBy('order_items.product_id', 'order_items.name', 'order_items.sku', 'orders.currency')
+            ->get();
+
+        // Groups are split by order currency, converted, then merged per product.
+        // Converting after aggregation keeps the stored per-order figures exact,
+        // and merging afterwards means one product sold in two currencies still
+        // produces a single report line.
+        $products = [];
+
+        foreach ($rows as $item) {
+            $currency = strtoupper((string) $item->getAttribute('order_currency'));
+            $rate = $rates[$currency] ?? null;
+
+            if ($rate === null) {
+                continue;
+            }
+
+            $productId = $item->getAttribute('product_id') === null
+                ? null
+                : (int) $item->getAttribute('product_id');
+            $name = (string) $item->getAttribute('name');
+            $sku = $item->getAttribute('sku');
+            $key = implode('|', [$productId ?? 'null', $name, $sku ?? '']);
+
+            $products[$key] ??= [
+                'product_id' => $productId,
+                'name' => $name,
+                'sku' => $sku,
+                'orders' => 0,
+                'units' => 0,
+                'gross_sales' => 0.0,
+                'discounts' => 0.0,
+                'net_sales' => 0.0,
+                'cogs' => 0.0,
+                'uncosted_units' => 0,
+                'uncosted_net_sales' => 0.0,
+            ];
+
+            $products[$key]['orders'] += (int) $item->getAttribute('orders');
+            $products[$key]['units'] += (int) $item->getAttribute('units');
+            $products[$key]['gross_sales'] += (float) $item->getAttribute('gross_sales') * $rate;
+            $products[$key]['discounts'] += (float) $item->getAttribute('discounts') * $rate;
+            $products[$key]['net_sales'] += (float) $item->getAttribute('net_sales') * $rate;
+            $products[$key]['cogs'] += (float) $item->getAttribute('cogs') * $rate;
+            $products[$key]['uncosted_units'] += (int) $item->getAttribute('uncosted_units');
+            $products[$key]['uncosted_net_sales'] += (float) $item->getAttribute('uncosted_net_sales') * $rate;
+        }
+
+        return collect($products)
+            ->map(function (array $product): array {
+                $units = (int) $product['units'];
+                $uncostedUnits = (int) $product['uncosted_units'];
+                $netSales = $this->money($product['net_sales']);
+                $cogs = $this->money($product['cogs']);
                 $complete = $units > 0 && $uncostedUnits === 0;
 
                 return [
-                    'product_id' => $item->getAttribute('product_id') === null
-                        ? null
-                        : (int) $item->getAttribute('product_id'),
-                    'name' => (string) $item->getAttribute('name'),
-                    'sku' => $item->getAttribute('sku'),
-                    'orders' => (int) $item->getAttribute('orders'),
+                    'product_id' => $product['product_id'],
+                    'name' => $product['name'],
+                    'sku' => $product['sku'],
+                    'orders' => (int) $product['orders'],
                     'units' => $units,
-                    'gross_sales' => $this->money($item->getAttribute('gross_sales')),
-                    'discounts' => $this->money($item->getAttribute('discounts')),
+                    'gross_sales' => $this->money($product['gross_sales']),
+                    'discounts' => $this->money($product['discounts']),
                     'net_sales' => $netSales,
                     'cogs' => $cogs,
                     'uncosted_units' => $uncostedUnits,
-                    'uncosted_net_sales' => $this->money($item->getAttribute('uncosted_net_sales')),
+                    'uncosted_net_sales' => $this->money($product['uncosted_net_sales']),
                     'cost_complete' => $complete,
                     'gross_profit' => $complete ? $this->money($netSales - $cogs) : null,
                     'gross_margin_percent' => $complete && $netSales > 0
@@ -485,6 +600,9 @@ class ProfitIntelligenceService
                         : null,
                 ];
             })
+            ->sortByDesc('net_sales')
+            ->take($limit)
+            ->values()
             ->all();
     }
 

@@ -27,8 +27,8 @@ class ProductVariant extends Model
     protected function casts(): array
     {
         return [
-            'price' => 'decimal:2',
-            'cost' => 'decimal:2',
+            'price' => 'decimal:4',
+            'cost' => 'decimal:4',
             'is_default' => 'boolean',
             'position' => 'integer',
         ];

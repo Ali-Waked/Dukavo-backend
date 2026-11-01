@@ -61,6 +61,7 @@ use App\Http\Controllers\Api\V1\ProfitIntelligenceController;
 use App\Http\Controllers\Api\V1\RecoveryOpportunityController;
 use App\Http\Controllers\Api\V1\RoleController;
 use App\Http\Controllers\Api\V1\StoreController;
+use App\Http\Controllers\Api\V1\StoreCurrencyController;
 use App\Http\Controllers\Api\V1\TenantSettingsController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\VoiceMessageController;
@@ -372,6 +373,13 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::patch('stores/{store}', [StoreController::class, 'update'])->middleware('permission:stores.manage')->name('stores.update');
         Route::delete('stores/{store}', [StoreController::class, 'destroy'])->middleware('permission:stores.manage')->name('stores.destroy');
         Route::post('stores/{store}/default', [StoreController::class, 'makeDefault'])->middleware('permission:stores.manage')->name('stores.default');
+
+        // Store base currency. Reading the catalogue and previewing a change is
+        // a view operation; performing the conversion is a financial write.
+        Route::get('currencies', [StoreCurrencyController::class, 'options'])->middleware('permission:stores.view')->name('currencies.index');
+        Route::get('stores/{store}/currency', [StoreCurrencyController::class, 'show'])->middleware('permission:stores.view')->name('stores.currency.show');
+        Route::get('stores/{store}/currency/preview', [StoreCurrencyController::class, 'preview'])->middleware('permission:stores.view')->name('stores.currency.preview');
+        Route::post('stores/{store}/currency', [StoreCurrencyController::class, 'convert'])->middleware('permission:stores.manage')->name('stores.currency.convert');
 
         // Workspace settings: readers may see the tenant, managers may change it.
         Route::get('settings', [TenantSettingsController::class, 'show'])->middleware('permission:settings.view')->name('settings.show');

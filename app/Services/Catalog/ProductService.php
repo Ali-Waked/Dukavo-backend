@@ -11,6 +11,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
+use App\Services\Currency\CurrencyCatalog;
 use App\Services\Inventory\InventoryService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -32,6 +33,7 @@ class ProductService
     public function __construct(
         private readonly TenantContext $tenants,
         private readonly InventoryService $inventory,
+        private readonly CurrencyCatalog $currencies,
     ) {}
 
     /**
@@ -58,6 +60,9 @@ class ProductService
                     $slug = $this->uniqueSlug($attributes['name']);
                 }
 
+                $currency = $store?->currency
+                    ?? ($this->currencies->supports($tenant->currency) ? strtoupper((string) $tenant->currency) : $this->currencies->default());
+
                 $product = Product::query()->create([
                     'tenant_id' => $tenant->getKey(),
                     'store_id' => $store?->getKey(),
@@ -69,7 +74,7 @@ class ProductService
                     'status' => $attributes['status'] ?? ProductStatus::Draft,
                     'price' => $attributes['price'] ?? 0,
                     'cost' => $attributes['cost'] ?? 0,
-                    'currency' => $attributes['currency'] ?? $tenant->currency,
+                    'currency' => $currency,
                     'is_taxable' => $attributes['is_taxable'] ?? true,
                 ]);
 
@@ -112,6 +117,11 @@ class ProductService
                 if (array_key_exists('name', $attributes) && ! array_key_exists('slug', $attributes)) {
                     $attributes['slug'] = $this->uniqueSlug($attributes['name'], $product->getKey());
                 }
+
+                // Currency is derived from the product's store, never chosen by
+                // an individual product form. The store currency endpoint is the
+                // only operation allowed to change it.
+                unset($attributes['currency']);
 
                 if (array_key_exists('variants', $attributes)) {
                     $variants = $this->syncVariants($product, $attributes['variants']);

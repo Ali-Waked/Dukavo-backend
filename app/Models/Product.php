@@ -42,8 +42,8 @@ class Product extends Model
     {
         return [
             'status' => ProductStatus::class,
-            'price' => 'decimal:2',
-            'cost' => 'decimal:2',
+            'price' => 'decimal:4',
+            'cost' => 'decimal:4',
             'is_taxable' => 'boolean',
         ];
     }

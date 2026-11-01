@@ -60,6 +60,9 @@ use App\Services\Ai\Providers\ProviderRegistry;
 use App\Services\Ai\Support\AiCapability;
 use App\Services\Channels\WhatsApp\Contracts\WhatsAppGateway;
 use App\Services\Channels\WhatsApp\MetaCloudGateway;
+use App\Services\Currency\Contracts\ExchangeRateProvider;
+use App\Services\Currency\CurrencyCatalog;
+use App\Services\Currency\Providers\OpenExchangeRateProvider;
 use App\Services\Notifications\NotificationEventCatalog;
 use App\Services\Recovery\RecoveryService;
 use App\Support\Tenancy\TenantContext;
@@ -85,6 +88,14 @@ class AppServiceProvider extends ServiceProvider
         // The WhatsApp provider is reached only through its contract, so tests
         // and other channels can substitute an implementation.
         $this->app->bind(WhatsAppGateway::class, MetaCloudGateway::class);
+
+        // Currency configuration is immutable configuration, shared once.
+        $this->app->singleton(CurrencyCatalog::class);
+
+        // Exchange rates are reached only through this contract. Tests replace
+        // the binding with a fixed quote; production uses the configured
+        // provider and fails clearly when it cannot produce a trustworthy rate.
+        $this->app->bind(ExchangeRateProvider::class, OpenExchangeRateProvider::class);
 
         // The set of capabilities AI may propose is closed and explicit. Every
         // executor is registered here, so an action type cannot exist in a
