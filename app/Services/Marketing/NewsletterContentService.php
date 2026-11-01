@@ -38,6 +38,10 @@ class NewsletterContentService
     {
         $attributes['body'] = $this->sanitizer->clean((string) ($attributes['body'] ?? ''));
 
+        if (array_key_exists('body_ar', $attributes)) {
+            $attributes['body_ar'] = $this->sanitizer->clean((string) ($attributes['body_ar'] ?? ''));
+        }
+
         $status = isset($attributes['status'])
             ? NewsletterArticleStatus::from((string) $attributes['status'])
             : NewsletterArticleStatus::Draft;
@@ -61,6 +65,10 @@ class NewsletterContentService
     {
         if (array_key_exists('body', $attributes)) {
             $attributes['body'] = $this->sanitizer->clean((string) $attributes['body']);
+        }
+
+        if (array_key_exists('body_ar', $attributes)) {
+            $attributes['body_ar'] = $this->sanitizer->clean((string) $attributes['body_ar']);
         }
 
         if (array_key_exists('status', $attributes)) {

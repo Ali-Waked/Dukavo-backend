@@ -7,6 +7,7 @@ namespace Database\Seeders;
 use App\Enums\NewsletterArticleStatus;
 use App\Models\Newsletter;
 use Database\Seeders\Support\DemoBlog;
+use Database\Seeders\Support\DemoBlogArabic;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -49,13 +50,17 @@ class BlogSeeder extends Seeder
         foreach (DemoBlog::posts() as $post) {
             $status = NewsletterArticleStatus::from($post['status']);
             $coverPath = $this->coverPath($post['slug']);
+            $arabic = DemoBlogArabic::forSlug($post['slug']);
 
             $edition = Newsletter::query()->updateOrCreate(
                 ['slug' => $post['slug']],
                 [
                     'title' => $post['title'],
+                    'title_ar' => $arabic['title'] ?? null,
                     'excerpt' => $post['excerpt'],
+                    'excerpt_ar' => $arabic['excerpt'] ?? null,
                     'body' => $post['body'],
+                    'body_ar' => $arabic['body'] ?? null,
                     'cover_image_path' => $coverPath,
                     'cover_image_disk' => $coverPath === null ? null : self::COVER_DISK,
                     'status' => $status,
@@ -63,7 +68,9 @@ class BlogSeeder extends Seeder
                         ? $post['published_at']
                         : null,
                     'meta_title' => $post['meta_title'],
+                    'meta_title_ar' => $arabic['meta_title'] ?? null,
                     'meta_description' => $post['meta_description'],
+                    'meta_description_ar' => $arabic['meta_description'] ?? null,
                 ],
             );
 

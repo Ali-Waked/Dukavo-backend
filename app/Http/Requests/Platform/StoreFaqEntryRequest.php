@@ -20,7 +20,9 @@ class StoreFaqEntryRequest extends ApiRequest
     {
         return [
             'question' => ['required', 'string', 'max:200'],
+            'question_ar' => ['nullable', 'string', 'max:200'],
             'answer' => ['required', 'string', 'max:2000'],
+            'answer_ar' => ['nullable', 'string', 'max:2000'],
             'category' => ['nullable', 'string', 'max:80'],
             'sort_order' => ['integer', 'min:0', 'max:9999'],
             'active' => ['boolean'],

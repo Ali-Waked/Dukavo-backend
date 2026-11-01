@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Model;
  * because published copy is public content the platform team is accountable
  * for.
  */
-#[Fillable(['question', 'answer', 'category', 'sort_order', 'active'])]
+#[Fillable(['question', 'question_ar', 'answer', 'answer_ar', 'category', 'sort_order', 'active'])]
 class FaqEntry extends Model
 {
     /** @use HasFactory<FaqEntryFactory> */
@@ -30,7 +30,7 @@ class FaqEntry extends Model
      */
     protected function auditAttributes(): array
     {
-        return ['question', 'answer', 'category', 'active', 'sort_order'];
+        return ['question', 'question_ar', 'answer', 'answer_ar', 'category', 'active', 'sort_order'];
     }
 
     protected function casts(): array

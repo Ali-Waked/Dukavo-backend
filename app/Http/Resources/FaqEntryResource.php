@@ -21,7 +21,9 @@ class FaqEntryResource extends JsonResource
         return [
             'id' => $this->id,
             'question' => $this->question,
+            'question_ar' => $this->question_ar,
             'answer' => $this->answer,
+            'answer_ar' => $this->answer_ar,
             'category' => $this->category,
             'sort_order' => $this->sort_order,
             'active' => $this->active,

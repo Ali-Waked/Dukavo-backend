@@ -19,7 +19,9 @@ class UpdateFaqEntryRequest extends ApiRequest
     {
         return [
             'question' => ['sometimes', 'string', 'max:200'],
+            'question_ar' => ['sometimes', 'nullable', 'string', 'max:200'],
             'answer' => ['sometimes', 'string', 'max:2000'],
+            'answer_ar' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'category' => ['sometimes', 'nullable', 'string', 'max:80'],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:9999'],
             'active' => ['sometimes', 'boolean'],

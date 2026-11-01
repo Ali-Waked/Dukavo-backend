@@ -52,13 +52,18 @@ class StoreNewsletterRequest extends ApiRequest
     {
         return [
             'title' => ['required', 'string', 'max:200'],
+            'title_ar' => ['nullable', 'string', 'max:200'],
             'slug' => ['required', 'string', 'max:200', 'alpha_dash', 'unique:newsletters,slug'],
             'excerpt' => ['nullable', 'string', 'max:320'],
+            'excerpt_ar' => ['nullable', 'string', 'max:320'],
             'body' => ['required', 'string', 'max:200000'],
+            'body_ar' => ['nullable', 'string', 'max:200000'],
             'cover_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
             'status' => ['sometimes', Rule::enum(NewsletterArticleStatus::class)],
             'meta_title' => ['nullable', 'string', 'max:200'],
+            'meta_title_ar' => ['nullable', 'string', 'max:200'],
             'meta_description' => ['nullable', 'string', 'max:320'],
+            'meta_description_ar' => ['nullable', 'string', 'max:320'],
         ];
     }
 }

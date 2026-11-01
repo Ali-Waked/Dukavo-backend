@@ -151,4 +151,37 @@ class NewsletterSeederTest extends TestCase
         $this->assertSame('owner@dukavo.test', $existing->fresh()->email);
         $this->assertSame(NewsletterStatus::Subscribed, $existing->fresh()->status);
     }
+
+    public function test_every_seeded_article_has_an_arabic_translation(): void
+    {
+        Storage::fake('public');
+
+        $this->seed(BlogSeeder::class);
+
+        foreach (Newsletter::query()->get() as $edition) {
+            $this->assertNotNull($edition->title_ar, $edition->slug);
+            $this->assertNotSame('', trim((string) $edition->title_ar), $edition->slug);
+            $this->assertNotSame('', trim((string) $edition->excerpt_ar), $edition->slug);
+            $this->assertNotSame('', trim((string) $edition->body_ar), $edition->slug);
+            $this->assertNotSame('', trim((string) $edition->meta_title_ar), $edition->slug);
+            $this->assertNotSame('', trim((string) $edition->meta_description_ar), $edition->slug);
+        }
+    }
+
+    public function test_the_arabic_blog_is_readable_through_the_public_api(): void
+    {
+        Storage::fake('public');
+
+        $this->seed(BlogSeeder::class);
+
+        $slug = 'how-whatsapp-commerce-is-changing-online-shopping';
+
+        $this->getJson('/api/v1/public/newsletters/'.$slug.'?locale=ar')
+            ->assertOk()
+            ->assertJsonPath('data.locale', 'ar')
+            ->assertJsonPath(
+                'data.title',
+                'كيف يغيّر التجارة عبر واتساب التسوق الإلكتروني',
+            );
+    }
 }

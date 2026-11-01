@@ -30,15 +30,20 @@ use Illuminate\Support\Facades\Storage;
  */
 #[Fillable([
     'title',
+    'title_ar',
     'slug',
     'excerpt',
+    'excerpt_ar',
     'body',
+    'body_ar',
     'cover_image_path',
     'cover_image_disk',
     'status',
     'published_at',
     'meta_title',
+    'meta_title_ar',
     'meta_description',
+    'meta_description_ar',
 ])]
 class Newsletter extends Model
 {
@@ -52,13 +57,17 @@ class Newsletter extends Model
     {
         return [
             'title',
+            'title_ar',
             'slug',
             'excerpt',
+            'excerpt_ar',
             'cover_image_path',
             'status',
             'published_at',
             'meta_title',
+            'meta_title_ar',
             'meta_description',
+            'meta_description_ar',
         ];
     }
 
@@ -90,7 +99,16 @@ class Newsletter extends Model
      */
     public function readingMinutes(): int
     {
-        $text = html_entity_decode($this->body ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return $this->readingMinutesFor($this->body);
+    }
+
+    /**
+     * Reading time for a specific body, so a translated article reports the
+     * length of the copy the visitor actually sees.
+     */
+    public function readingMinutesFor(?string $body): int
+    {
+        $text = html_entity_decode($body ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = trim((string) preg_replace('/\s+/u', ' ', strip_tags($text)));
 
         if ($text === '') {

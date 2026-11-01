@@ -94,4 +94,93 @@ class PublicNewsletterTest extends TestCase
         $this->assertSame(12, $response->json('meta.total'));
         $this->assertSame(5, $response->json('meta.per_page'));
     }
+
+    public function test_an_explicit_arabic_locale_serves_the_arabic_article(): void
+    {
+        Newsletter::factory()->create([
+            'slug' => 'bilingual',
+            'title' => 'English title',
+            'title_ar' => 'عنوان عربي',
+            'excerpt' => 'English summary',
+            'excerpt_ar' => 'ملخص عربي',
+            'body' => '<p>English body.</p>',
+            'body_ar' => '<p>نص عربي.</p>',
+        ]);
+
+        $this->getJson('/api/v1/public/newsletters/bilingual?locale=ar')
+            ->assertOk()
+            ->assertJsonPath('data.title', 'عنوان عربي')
+            ->assertJsonPath('data.excerpt', 'ملخص عربي')
+            ->assertJsonPath('data.body', '<p>نص عربي.</p>')
+            ->assertJsonPath('data.locale', 'ar');
+    }
+
+    public function test_accept_language_selects_the_arabic_article(): void
+    {
+        Newsletter::factory()->create([
+            'slug' => 'header-locale',
+            'title' => 'English title',
+            'title_ar' => 'عنوان عربي',
+            'body' => '<p>English body.</p>',
+            'body_ar' => '<p>نص عربي.</p>',
+        ]);
+
+        $this->withHeader('Accept-Language', 'ar-EG,ar;q=0.9,en;q=0.8')
+            ->getJson('/api/v1/public/newsletters/header-locale')
+            ->assertOk()
+            ->assertJsonPath('data.title', 'عنوان عربي')
+            ->assertJsonPath('data.locale', 'ar');
+    }
+
+    public function test_a_missing_arabic_field_falls_back_to_english(): void
+    {
+        Newsletter::factory()->create([
+            'slug' => 'partial-translation',
+            'title' => 'English title',
+            'title_ar' => 'عنوان عربي',
+            'excerpt' => 'English summary',
+            'excerpt_ar' => null,
+            'body' => '<p>English body.</p>',
+            'body_ar' => '<p>نص عربي.</p>',
+        ]);
+
+        $this->getJson('/api/v1/public/newsletters/partial-translation?locale=ar')
+            ->assertOk()
+            ->assertJsonPath('data.title', 'عنوان عربي')
+            ->assertJsonPath('data.excerpt', 'English summary')
+            ->assertJsonPath('data.body', '<p>نص عربي.</p>');
+    }
+
+    public function test_the_archive_resolves_titles_and_excerpts_in_the_requested_locale(): void
+    {
+        Newsletter::factory()->create([
+            'slug' => 'arabic-archive',
+            'title' => 'English title',
+            'title_ar' => 'عنوان عربي',
+            'excerpt' => 'English summary',
+            'excerpt_ar' => 'ملخص عربي',
+        ]);
+
+        $row = $this->getJson('/api/v1/public/newsletters?locale=ar')
+            ->assertOk()
+            ->json('data.0');
+
+        $this->assertSame('عنوان عربي', $row['title']);
+        $this->assertSame('ملخص عربي', $row['excerpt']);
+        $this->assertSame('ar', $row['locale']);
+    }
+
+    public function test_an_unsupported_locale_degrades_to_english(): void
+    {
+        Newsletter::factory()->create([
+            'slug' => 'english-fallback',
+            'title' => 'English title',
+            'title_ar' => 'عنوان عربي',
+        ]);
+
+        $this->getJson('/api/v1/public/newsletters/english-fallback?locale=fr')
+            ->assertOk()
+            ->assertJsonPath('data.title', 'English title')
+            ->assertJsonPath('data.locale', 'en');
+    }
 }

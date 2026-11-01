@@ -168,4 +168,54 @@ class PublicMarketingContentTest extends TestCase
         $questions = $this->getJson('/api/v1/public/faq')->assertOk()->json('data');
         $this->assertCount(6, $questions);
     }
+
+    public function test_faq_serves_arabic_when_requested(): void
+    {
+        FaqEntry::factory()->create([
+            'question' => 'English question?',
+            'question_ar' => 'سؤال عربي؟',
+            'answer' => 'English answer.',
+            'answer_ar' => 'إجابة عربية.',
+        ]);
+
+        $this->getJson('/api/v1/public/faq?locale=ar')
+            ->assertOk()
+            ->assertJsonPath('data.0.question', 'سؤال عربي؟')
+            ->assertJsonPath('data.0.answer', 'إجابة عربية.')
+            ->assertJsonPath('data.0.locale', 'ar');
+    }
+
+    public function test_faq_accept_language_and_field_level_fallback(): void
+    {
+        FaqEntry::factory()->create([
+            'question' => 'English question?',
+            'question_ar' => 'سؤال عربي؟',
+            'answer' => 'English answer.',
+            'answer_ar' => null,
+        ]);
+
+        $row = $this->withHeader('Accept-Language', 'ar')
+            ->getJson('/api/v1/public/faq')
+            ->assertOk()
+            ->json('data.0');
+
+        $this->assertSame('سؤال عربي؟', $row['question']);
+        $this->assertSame('English answer.', $row['answer']);
+    }
+
+    public function test_the_seeded_faq_carries_arabic_translations(): void
+    {
+        $this->seed(MarketingContentSeeder::class);
+
+        $rows = $this->getJson('/api/v1/public/faq?locale=ar')->assertOk()->json('data');
+
+        $this->assertCount(6, $rows);
+
+        foreach ($rows as $row) {
+            $this->assertNotSame('', trim((string) $row['question']));
+            $this->assertNotSame('', trim((string) $row['answer']));
+        }
+
+        $this->assertContains('هل يمكنني تشغيل أكثر من متجر؟', array_column($rows, 'question'));
+    }
 }

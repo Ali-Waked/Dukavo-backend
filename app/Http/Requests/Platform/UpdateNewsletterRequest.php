@@ -39,6 +39,7 @@ class UpdateNewsletterRequest extends ApiRequest
 
         return [
             'title' => ['sometimes', 'required', 'string', 'max:200'],
+            'title_ar' => ['sometimes', 'nullable', 'string', 'max:200'],
             'slug' => [
                 'sometimes',
                 'required',
@@ -48,12 +49,16 @@ class UpdateNewsletterRequest extends ApiRequest
                 Rule::unique('newsletters', 'slug')->ignore($newsletter),
             ],
             'excerpt' => ['sometimes', 'nullable', 'string', 'max:320'],
+            'excerpt_ar' => ['sometimes', 'nullable', 'string', 'max:320'],
             'body' => ['sometimes', 'required', 'string', 'max:200000'],
+            'body_ar' => ['sometimes', 'nullable', 'string', 'max:200000'],
             'cover_image' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
             'remove_cover' => ['sometimes', 'boolean'],
             'status' => ['sometimes', Rule::enum(NewsletterArticleStatus::class)],
             'meta_title' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'meta_title_ar' => ['sometimes', 'nullable', 'string', 'max:200'],
             'meta_description' => ['sometimes', 'nullable', 'string', 'max:320'],
+            'meta_description_ar' => ['sometimes', 'nullable', 'string', 'max:320'],
         ];
     }
 }

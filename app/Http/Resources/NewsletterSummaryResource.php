@@ -27,8 +27,10 @@ class NewsletterSummaryResource extends JsonResource
         return [
             'id' => $this->id,
             'title' => $this->title,
+            'title_ar' => $this->title_ar,
             'slug' => $this->slug,
             'excerpt' => $this->excerpt,
+            'excerpt_ar' => $this->excerpt_ar,
             'cover_image_url' => $this->coverImageUrl(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1\Marketing;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\FaqEntryResource;
+use App\Http\Resources\PublicFaqEntryResource;
 use App\Models\FaqEntry;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -25,7 +25,7 @@ class FaqController extends Controller
 {
     public function index(): JsonResponse
     {
-        return ApiResponse::success(data: FaqEntryResource::collection(
+        return ApiResponse::success(data: PublicFaqEntryResource::collection(
             FaqEntry::query()->active()->ordered()->get(),
         ));
     }

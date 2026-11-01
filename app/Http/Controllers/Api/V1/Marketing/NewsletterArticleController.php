@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1\Marketing;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\NewsletterResource;
-use App\Http\Resources\NewsletterSummaryResource;
+use App\Http\Resources\PublicNewsletterResource;
+use App\Http\Resources\PublicNewsletterSummaryResource;
 use App\Models\Newsletter;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -34,7 +34,7 @@ class NewsletterArticleController extends Controller
             ->paginate(min($request->integer('per_page', 9), 50))
             ->withQueryString();
 
-        return ApiResponse::success(data: NewsletterSummaryResource::collection($editions));
+        return ApiResponse::success(data: PublicNewsletterSummaryResource::collection($editions));
     }
 
     public function show(string $slug): JsonResponse
@@ -46,6 +46,6 @@ class NewsletterArticleController extends Controller
 
         abort_if($edition === null, 404);
 
-        return ApiResponse::success(data: new NewsletterResource($edition));
+        return ApiResponse::success(data: new PublicNewsletterResource($edition));
     }
 }
