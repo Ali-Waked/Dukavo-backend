@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\V1\NotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OnboardingController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\PermissionController;
+use App\Http\Controllers\Api\V1\Platform\BlogContentImageController;
 use App\Http\Controllers\Api\V1\Platform\ContactMessageController;
 use App\Http\Controllers\Api\V1\Platform\ContentPageController as PlatformContentPageController;
 use App\Http\Controllers\Api\V1\Platform\FaqEntryController;
@@ -338,6 +339,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
          */
         Route::get('newsletters', [PlatformNewsletterController::class, 'index'])->name('newsletters.index');
         Route::post('newsletters', [PlatformNewsletterController::class, 'store'])->name('newsletters.store');
+        Route::post('newsletters/content-images', [BlogContentImageController::class, 'store'])->name('newsletters.content-images.store');
         Route::get('newsletters/slug-availability', [PlatformNewsletterController::class, 'slugAvailability'])->name('newsletters.slug-availability');
         Route::get('newsletters/{newsletter}', [PlatformNewsletterController::class, 'show'])->name('newsletters.show');
         Route::patch('newsletters/{newsletter}', [PlatformNewsletterController::class, 'update'])->name('newsletters.update');

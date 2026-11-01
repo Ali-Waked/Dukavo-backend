@@ -29,6 +29,13 @@ class NewsletterContentService
 {
     private const COVER_DISK = 'public';
 
+    /**
+     * Inline article images live apart from covers: a cover belongs to one
+     * edition and is replaced with it, while a body image is referenced from the
+     * stored HTML and must keep a stable URL for as long as the article exists.
+     */
+    private const CONTENT_DIRECTORY = 'blogs/content';
+
     public function __construct(private readonly HtmlSanitizer $sanitizer) {}
 
     /**
@@ -100,6 +107,26 @@ class NewsletterContentService
     {
         $this->deleteCoverFile($newsletter);
         $newsletter->delete();
+    }
+
+    /**
+     * Store an inline image and return the reference the editor should embed.
+     *
+     * The path is what is persisted; the URL is derived from the disk so moving
+     * storage later does not rewrite article HTML that already points at
+     * `/storage/...`. Dimensions are returned as a convenience for the editor's
+     * preview only — the sanitised body keeps whatever width the author chose.
+     *
+     * @return array{path: string, url: string}
+     */
+    public function storeInlineImage(UploadedFile $image): array
+    {
+        $path = $image->store(self::CONTENT_DIRECTORY, self::COVER_DISK);
+
+        return [
+            'path' => $path,
+            'url' => Storage::disk(self::COVER_DISK)->url($path),
+        ];
     }
 
     /**

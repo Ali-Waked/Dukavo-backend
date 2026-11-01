@@ -21,7 +21,8 @@ use DOMNode;
  * `<style>` and `<iframe>`) are dropped, but their text children are kept where
  * that is meaningful, so a paste from a word processor degrades to readable
  * prose instead of being refused or silently emptied. Attributes are stripped
- * wholesale except for a vetted `href` on anchors.
+ * wholesale except for a vetted `href` on anchors, an image's own source and alt
+ * text, and a small set of layout properties the toolbar emits.
  *
  * This is intentionally a small allow-list, not a general-purpose library: the
  * set of tags matches exactly what the toolbar can produce, and widening it is a
@@ -37,7 +38,7 @@ class HtmlSanitizer
      * @var array<string, list<string>>
      */
     private const ALLOWED = [
-        'p' => [],
+        'p' => ['style'],
         'br' => [],
         'hr' => [],
         'strong' => [],
@@ -49,13 +50,16 @@ class HtmlSanitizer
         'ul' => [],
         'ol' => [],
         'li' => [],
-        'h2' => [],
-        'h3' => [],
-        'h4' => [],
-        'blockquote' => [],
+        'h2' => ['style'],
+        'h3' => ['style'],
+        'h4' => ['style'],
+        'blockquote' => ['style'],
         'code' => [],
         'pre' => [],
         'a' => ['href'],
+        'figure' => ['style'],
+        'figcaption' => ['style'],
+        'img' => ['src', 'alt', 'width', 'height', 'loading', 'style'],
     ];
 
     /** Tags that never keep their children — their content is not prose. */
@@ -68,6 +72,17 @@ class HtmlSanitizer
      * @var list<string>
      */
     private const ALLOWED_SCHEMES = ['http', 'https', 'mailto', 'tel'];
+
+    /**
+     * CSS properties the editor is allowed to emit.
+     *
+     * Only layout hints the toolbar actually produces survive; a pasted
+     * `background:url(javascript:…)` or `position:fixed` is dropped. Values are
+     * validated by {@see isSafeStyleValue()}.
+     *
+     * @var list<string>
+     */
+    private const ALLOWED_STYLE_PROPERTIES = ['text-align', 'width', 'height', 'max-width'];
 
     public function clean(?string $html): string
     {
@@ -166,6 +181,16 @@ class HtmlSanitizer
         }
 
         $this->stripAttributes($element, $tag);
+
+        // An image whose source was refused is not content: it would render as a
+        // broken icon and still ship the author's alt text. Drop the element
+        // rather than keeping a shell that points nowhere.
+        if ($tag === 'img' && ! $element->hasAttribute('src')) {
+            $element->parentNode?->removeChild($element);
+
+            return;
+        }
+
         $this->scrub($element);
     }
 
@@ -188,10 +213,97 @@ class HtmlSanitizer
                 continue;
             }
 
-            if ($name === 'href' && ! $this->isSafeHref($attribute->value)) {
+            $safe = match ($name) {
+                'href' => $this->isSafeHref($attribute->value),
+                'src' => $this->isSafeImageSrc($attribute->value),
+                'style' => $this->cleanStyle($attribute->value) !== '',
+                'loading' => strtolower(trim($attribute->value)) === 'lazy',
+                'width', 'height' => preg_match('/^\d{1,4}$/', trim($attribute->value)) === 1,
+                default => true,
+            };
+
+            if (! $safe) {
                 $element->removeAttribute($attribute->name);
+
+                continue;
+            }
+
+            if ($name === 'style') {
+                $element->setAttribute('style', $this->cleanStyle($attribute->value));
             }
         }
+    }
+
+    /**
+     * Keep only declared properties whose values are bounded layout hints.
+     *
+     * A width/height may be a percentage or a pixel value; `max-width: 100%` is
+     * what keeps an uploaded image inside a narrow article column. Everything
+     * else — including `url()`, `expression()` and CSS escapes — is discarded.
+     */
+    private function cleanStyle(string $style): string
+    {
+        $kept = [];
+
+        foreach (explode(';', $style) as $declaration) {
+            if (! str_contains($declaration, ':')) {
+                continue;
+            }
+
+            [$property, $value] = array_map('trim', explode(':', $declaration, 2));
+            $property = strtolower($property);
+            $value = strtolower($value);
+
+            if (! in_array($property, self::ALLOWED_STYLE_PROPERTIES, true)) {
+                continue;
+            }
+
+            if ($this->isSafeStyleValue($property, $value)) {
+                $kept[] = $property.': '.$value;
+            }
+        }
+
+        return implode('; ', $kept);
+    }
+
+    private function isSafeStyleValue(string $property, string $value): bool
+    {
+        if ($property === 'text-align') {
+            return in_array($value, ['left', 'right', 'center', 'justify'], true);
+        }
+
+        if ($property === 'max-width') {
+            return $value === '100%';
+        }
+
+        return preg_match('/^\d{1,3}%$/', $value) === 1
+            || preg_match('/^\d{1,4}px$/', $value) === 1;
+    }
+
+    /**
+     * Inline images may only point at our own storage or an absolute https URL.
+     *
+     * `data:` is rejected on purpose: a base64 payload is not an upload, it is
+     * a document body that grows without bound and bypasses the storage path the
+     * platform audits and deletes with the article.
+     */
+    private function isSafeImageSrc(string $src): bool
+    {
+        $src = trim($src);
+
+        if ($src === '') {
+            return false;
+        }
+
+        if (str_starts_with($src, '/')) {
+            return ! str_starts_with($src, '//');
+        }
+
+        $scheme = parse_url($src, PHP_URL_SCHEME);
+
+        return $scheme !== null
+            && $scheme !== false
+            && in_array(strtolower($scheme), ['http', 'https'], true);
     }
 
     private function isSafeHref(string $href): bool
