@@ -63,6 +63,11 @@ use App\Http\Controllers\Api\V1\RecoveryOpportunityController;
 use App\Http\Controllers\Api\V1\RoleController;
 use App\Http\Controllers\Api\V1\StoreController;
 use App\Http\Controllers\Api\V1\StoreCurrencyController;
+use App\Http\Controllers\Api\V1\Storefront\PaymentSettingsController;
+use App\Http\Controllers\Api\V1\Storefront\PublicStorefrontController;
+use App\Http\Controllers\Api\V1\Storefront\ShippingZoneController;
+use App\Http\Controllers\Api\V1\Storefront\StorefrontCheckoutController;
+use App\Http\Controllers\Api\V1\Storefront\StorefrontSettingsController;
 use App\Http\Controllers\Api\V1\TenantSettingsController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\VoiceMessageController;
@@ -161,6 +166,29 @@ Route::prefix('public')->name('api.public.')->group(function (): void {
     Route::post('contact', [ContactController::class, 'store'])->middleware('throttle:contact')->name('contact.store');
     Route::post('newsletter/subscribe', [NewsletterController::class, 'subscribe'])->middleware('throttle:newsletter')->name('newsletter.subscribe');
     Route::post('newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe'])->middleware('throttle:newsletter')->name('newsletter.unsubscribe');
+
+    /*
+     * Merchant storefronts are public by design, but their data is still
+     * tenant-owned. The tenant comes from the URL slug, never a header or
+     * payload, and each controller enters TenantContext::run() before touching
+     * a scoped model. Checkout has its own tighter limiter because it reserves
+     * stock and writes an order.
+     */
+    Route::prefix('storefront/{tenantSlug}/{storeSlug}')
+        ->name('storefront.')
+        ->middleware('throttle:storefront')
+        ->group(function (): void {
+            Route::get('/', [PublicStorefrontController::class, 'show'])->name('show');
+            Route::get('categories', [PublicStorefrontController::class, 'categories'])->name('categories.index');
+            Route::get('products', [PublicStorefrontController::class, 'products'])->name('products.index');
+            Route::get('products/{productSlug}', [PublicStorefrontController::class, 'product'])->name('products.show');
+            Route::get('shipping-zones', [PublicStorefrontController::class, 'shippingZones'])->name('shipping-zones.index');
+            Route::get('payment-methods', [PublicStorefrontController::class, 'paymentMethods'])->name('payment-methods.index');
+
+            Route::post('checkout', [StorefrontCheckoutController::class, 'store'])
+                ->middleware('throttle:storefront-checkout')->name('checkout.store');
+            Route::get('orders/{token}', [StorefrontCheckoutController::class, 'show'])->name('orders.show');
+        });
 });
 
 Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
@@ -375,6 +403,30 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::patch('stores/{store}', [StoreController::class, 'update'])->middleware('permission:stores.manage')->name('stores.update');
         Route::delete('stores/{store}', [StoreController::class, 'destroy'])->middleware('permission:stores.manage')->name('stores.destroy');
         Route::post('stores/{store}/default', [StoreController::class, 'makeDefault'])->middleware('permission:stores.manage')->name('stores.default');
+
+        /*
+         * Storefront, delivery and payment configuration is scoped to one store.
+         * Reading the public shop's setup is a view grant; changing what
+         * customers see or what they are charged for delivery is a manage grant.
+         */
+        Route::get('stores/{store}/storefront', [StorefrontSettingsController::class, 'show'])
+            ->middleware('permission:storefront.view')->name('stores.storefront.show');
+        Route::patch('stores/{store}/storefront', [StorefrontSettingsController::class, 'update'])
+            ->middleware('permission:storefront.manage')->name('stores.storefront.update');
+
+        Route::get('stores/{store}/shipping-zones', [ShippingZoneController::class, 'index'])
+            ->middleware('permission:shipping.view')->name('stores.shipping-zones.index');
+        Route::post('stores/{store}/shipping-zones', [ShippingZoneController::class, 'store'])
+            ->middleware('permission:shipping.manage')->name('stores.shipping-zones.store');
+        Route::patch('stores/{store}/shipping-zones/{shippingZone}', [ShippingZoneController::class, 'update'])
+            ->middleware('permission:shipping.manage')->name('stores.shipping-zones.update');
+        Route::delete('stores/{store}/shipping-zones/{shippingZone}', [ShippingZoneController::class, 'destroy'])
+            ->middleware('permission:shipping.manage')->name('stores.shipping-zones.destroy');
+
+        Route::get('stores/{store}/payments', [PaymentSettingsController::class, 'show'])
+            ->middleware('permission:payments.view')->name('stores.payments.show');
+        Route::patch('stores/{store}/payments', [PaymentSettingsController::class, 'update'])
+            ->middleware('permission:payments.manage')->name('stores.payments.update');
 
         // Store base currency. Reading the catalogue and previewing a change is
         // a view operation; performing the conversion is a financial write.

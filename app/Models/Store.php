@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Inventory is tracked per store, which is why a tenant always owns at least
  * one store (created together with the tenant).
  */
-#[Fillable(['tenant_id', 'name', 'slug', 'status', 'email', 'phone', 'currency', 'currency_decimals', 'currency_updated_at', 'timezone', 'is_default'])]
+#[Fillable(['tenant_id', 'name', 'slug', 'description', 'logo_url', 'status', 'email', 'phone', 'currency', 'currency_decimals', 'currency_updated_at', 'timezone', 'is_default', 'storefront_enabled', 'storefront_settings', 'payment_settings'])]
 class Store extends Model
 {
     /** @use HasFactory<StoreFactory> */
@@ -32,7 +32,7 @@ class Store extends Model
      */
     protected function auditAttributes(): array
     {
-        return ['name', 'slug', 'status', 'currency', 'currency_decimals', 'timezone', 'is_default'];
+        return ['name', 'slug', 'description', 'logo_url', 'status', 'currency', 'currency_decimals', 'timezone', 'is_default', 'storefront_enabled'];
     }
 
     protected function casts(): array
@@ -40,6 +40,9 @@ class Store extends Model
         return [
             'status' => StoreStatus::class,
             'is_default' => 'boolean',
+            'storefront_enabled' => 'boolean',
+            'storefront_settings' => 'array',
+            'payment_settings' => 'array',
             'currency_decimals' => 'integer',
             'currency_updated_at' => 'datetime',
         ];
@@ -67,6 +70,14 @@ class Store extends Model
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
+
+    /**
+     * @return HasMany<ShippingZone, $this>
+     */
+    public function shippingZones(): HasMany
+    {
+        return $this->hasMany(ShippingZone::class);
     }
 
     #[Scope]

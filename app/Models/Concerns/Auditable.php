@@ -69,12 +69,11 @@ trait Auditable
             $old = [];
 
             foreach (array_keys($new) as $attribute) {
-                $before = $model->getOriginal($attribute);
-                $before = $before instanceof BackedEnum ? $before->value : $before;
-                $after = $new[$attribute] instanceof BackedEnum ? $new[$attribute]->value : $new[$attribute];
+                $before = $model->auditComparableValue($model->getOriginal($attribute));
+                $after = $model->auditComparableValue($new[$attribute]);
 
-                if ((string) $before !== (string) $after) {
-                    $old[$attribute] = $before;
+                if ($before !== $after) {
+                    $old[$attribute] = $model->getOriginal($attribute);
                 }
             }
 
@@ -90,5 +89,25 @@ trait Auditable
         if (method_exists(static::class, 'restored')) {
             static::restored(fn (Model $model) => $model->recordAuditEvent(AuditAction::Restored, [], $model->auditSnapshot()));
         }
+    }
+
+    /**
+     * A stable string form for comparing two audit values.
+     *
+     * Casting is kept in one place because audit attributes may be enums or
+     * JSON-cast arrays; a raw `(string)` cast on an array raises a warning and
+     * would make an otherwise valid update fail.
+     */
+    private function auditComparableValue(mixed $value): string
+    {
+        if ($value instanceof BackedEnum) {
+            $value = $value->value;
+        }
+
+        if (is_array($value)) {
+            return json_encode($value) ?: '';
+        }
+
+        return (string) $value;
     }
 }

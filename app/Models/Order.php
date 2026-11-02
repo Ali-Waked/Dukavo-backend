@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToTenant;
@@ -30,7 +31,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * Product references on the order items are nullable and the item snapshots
  * name/SKU, so historic orders stay readable even after the catalogue changes.
  */
-#[Fillable(['tenant_id', 'store_id', 'customer_id', 'conversation_id', 'order_number', 'status', 'payment_status', 'currency', 'customer_name', 'customer_phone', 'shipping_address', 'notes'])]
+#[Fillable(['tenant_id', 'store_id', 'customer_id', 'conversation_id', 'order_number', 'status', 'payment_status', 'payment_method', 'currency', 'customer_name', 'customer_phone', 'customer_email', 'shipping_address', 'tracking_token', 'shipping_zone_id', 'idempotency_key', 'source', 'notes'])]
 class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
@@ -41,7 +42,7 @@ class Order extends Model
      */
     protected function auditAttributes(): array
     {
-        return ['order_number', 'status', 'payment_status', 'grand_total'];
+        return ['order_number', 'status', 'payment_status', 'payment_method', 'grand_total'];
     }
 
     protected function casts(): array
@@ -49,6 +50,7 @@ class Order extends Model
         return [
             'status' => OrderStatus::class,
             'payment_status' => PaymentStatus::class,
+            'payment_method' => PaymentMethod::class,
             'subtotal' => 'decimal:2',
             'discount_total' => 'decimal:2',
             'tax_total' => 'decimal:2',
@@ -82,6 +84,14 @@ class Order extends Model
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);
+    }
+
+    /**
+     * @return BelongsTo<ShippingZone, $this>
+     */
+    public function shippingZone(): BelongsTo
+    {
+        return $this->belongsTo(ShippingZone::class);
     }
 
     /**

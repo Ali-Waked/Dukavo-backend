@@ -69,6 +69,18 @@ final class PermissionRegistry
             'view' => 'Browse stores',
             'manage' => 'Create and update stores',
         ],
+        'storefront' => [
+            'view' => 'View storefront settings and preview the public shop',
+            'manage' => 'Publish and configure the public storefront',
+        ],
+        'shipping' => [
+            'view' => 'Browse delivery zones and fees',
+            'manage' => 'Create and edit delivery zones and fees',
+        ],
+        'payments' => [
+            'view' => 'View the payment methods a store accepts',
+            'manage' => 'Configure payment methods and instructions',
+        ],
         'settings' => [
             'view' => 'View workspace settings',
             'manage' => 'Update workspace settings',
@@ -202,6 +214,9 @@ final class PermissionRegistry
                 'automation.view',
                 'whatsapp.view',
                 'stores.view',
+                'storefront.view',
+                'shipping.view',
+                'payments.view',
                 'ai.use',
                 'ai.approve',
             ],

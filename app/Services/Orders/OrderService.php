@@ -7,6 +7,7 @@ namespace App\Services\Orders;
 use App\Enums\InventoryMovementType;
 use App\Enums\NotificationSeverity;
 use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Events\Automation\OrderCreated as AutomationOrderCreated;
 use App\Events\Automation\OrderStatusChanged as AutomationOrderStatusChanged;
@@ -58,6 +59,12 @@ class OrderService
                 ? Customer::query()->findOrFail($attributes['customer_id'])
                 : null;
 
+            $paymentMethod = $attributes['payment_method'] ?? null;
+
+            if ($paymentMethod instanceof PaymentMethod) {
+                $paymentMethod = $paymentMethod->value;
+            }
+
             $order = Order::query()->create([
                 'tenant_id' => $tenant->getKey(),
                 'store_id' => $store->getKey(),
@@ -66,10 +73,16 @@ class OrderService
                 'order_number' => $this->nextOrderNumber($store),
                 'status' => OrderStatus::Pending,
                 'payment_status' => PaymentStatus::Unpaid,
+                'payment_method' => $paymentMethod,
                 'currency' => $attributes['currency'] ?? $store->currency,
                 'customer_name' => $attributes['customer_name'] ?? $customer?->name,
                 'customer_phone' => $attributes['customer_phone'] ?? $customer?->phone,
+                'customer_email' => $attributes['customer_email'] ?? $customer?->email,
                 'shipping_address' => $attributes['shipping_address'] ?? null,
+                'tracking_token' => $attributes['tracking_token'] ?? null,
+                'shipping_zone_id' => $attributes['shipping_zone_id'] ?? null,
+                'idempotency_key' => $attributes['idempotency_key'] ?? null,
+                'source' => $attributes['source'] ?? 'merchant',
                 'notes' => $attributes['notes'] ?? null,
             ]);
 

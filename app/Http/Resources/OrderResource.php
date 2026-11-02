@@ -28,6 +28,9 @@ class OrderResource extends JsonResource
             'status_label' => $this->status->label(),
             'payment_status' => $this->payment_status->value,
             'payment_status_label' => $this->payment_status->label(),
+            'payment_method' => $this->payment_method?->value,
+            'payment_method_label' => $this->payment_method?->label(),
+            'source' => $this->source,
             'subtotal' => (float) $this->subtotal,
             'discount_total' => (float) $this->discount_total,
             'tax_total' => (float) $this->tax_total,
@@ -36,7 +39,10 @@ class OrderResource extends JsonResource
             'currency' => $this->currency,
             'customer_name' => $this->customer_name,
             'customer_phone' => $this->customer_phone,
+            'customer_email' => $this->customer_email,
             'shipping_address' => $this->shipping_address,
+            'shipping_zone_id' => $this->shipping_zone_id,
+            'tracking_token' => $this->tracking_token,
             'notes' => $this->notes,
             'item_count' => $this->relationLoaded('items')
                 ? (int) $this->items->sum('quantity')

@@ -30,6 +30,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\RecoveryOpportunity;
 use App\Models\Role;
+use App\Models\ShippingZone;
 use App\Models\StockTransfer;
 use App\Models\Store;
 use App\Models\Tenant;
@@ -276,10 +277,19 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('ai', fn (Request $request): Limit => Limit::perMinute((int) config('ai.transport.rate_per_minute', 20))
             ->by('ai|'.($request->user()?->getKey() ?? $request->ip())));
 
+        // Public checkout writes real orders and reserves real stock. Keying the
+        // limit on IP plus the store slug stops one client from emptying a
+        // shopfront while still allowing shared NATs to browse and order.
+        RateLimiter::for('storefront-checkout', fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('storefront-checkout|'.$request->ip().'|'.$request->route('storeSlug')));
+        RateLimiter::for('storefront', fn (Request $request): Limit => Limit::perMinute(120)
+            ->by('storefront|'.$request->ip()));
+
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
             'user' => User::class,
             'store' => Store::class,
+            'shipping_zone' => ShippingZone::class,
             'category' => Category::class,
             'product' => Product::class,
             'product_variant' => ProductVariant::class,
