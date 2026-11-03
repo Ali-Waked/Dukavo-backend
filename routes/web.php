@@ -3,7 +3,6 @@
 use Illuminate\Support\Facades\Route;
 
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Route;
 
 Route::get('/_run/{token}', function (string $token) {
     $expected = (string) config('services.setup_token');
