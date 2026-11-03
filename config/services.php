@@ -75,5 +75,5 @@ return [
         ))))),
         'voice_media_retention_days' => (int) env('WHATSAPP_VOICE_MEDIA_RETENTION_DAYS', 30),
     ],
-
+'setup_token' => env('SETUP_TOKEN'),
 ];
