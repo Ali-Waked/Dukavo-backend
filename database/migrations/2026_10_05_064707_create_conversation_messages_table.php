@@ -21,7 +21,10 @@ return new class extends Migration
             $table->timestamp('sent_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['conversation_id', 'direction', 'external_id']);
+            $table->unique(
+    ['conversation_id', 'direction', 'external_id'],
+    'conv_msg_external_unique'
+);
             $table->index(['tenant_id', 'sent_at']);
         });
     }
