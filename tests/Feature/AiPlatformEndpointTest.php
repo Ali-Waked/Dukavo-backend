@@ -63,6 +63,38 @@ class AiPlatformEndpointTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
+    public function test_platform_availability_lists_the_use_cases_a_dukavo_admin_can_run(): void
+    {
+        $admin = $this->platformUser('dukavo-admin');
+
+        $this->fakeModel();
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/platform/ai/availability')
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $insights = collect($response->json('data'))->firstWhere('key', 'insights');
+
+        $this->assertTrue($insights['enabled']);
+    }
+
+    public function test_platform_availability_reports_insights_as_unavailable_when_ai_is_off(): void
+    {
+        $admin = $this->platformUser('dukavo-admin');
+
+        $this->fakeModel();
+        config()->set('ai.enabled', false);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/platform/ai/availability')
+            ->assertOk();
+
+        $insights = collect($response->json('data'))->firstWhere('key', 'insights');
+
+        $this->assertFalse($insights['enabled']);
+    }
+
     public function test_a_dukavo_admin_receives_platform_insights(): void
     {
         $admin = $this->platformUser('dukavo-admin');

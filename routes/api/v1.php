@@ -269,6 +269,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
          * newsletters), never a merchant workspace. `permission:ai.use` is held by
          * Super Admin and Dukavo Admin, and can be revoked per role.
          */
+        Route::get('ai/availability', [AiAvailabilityController::class, 'index'])
+            ->middleware('permission:ai.use')->name('ai.availability');
         Route::get('ai/insights', [PlatformInsightsController::class, 'index'])
             ->middleware('permission:ai.use')->name('ai.insights');
         Route::post('ai/newsletter-content', [ContentAssistantController::class, 'generate'])
