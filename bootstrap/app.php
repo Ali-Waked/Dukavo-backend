@@ -44,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // bearer token otherwise.
         $middleware->statefulApi();
         $middleware->throttleApi('api');
+        $middleware->trustProxies(at: '*');
 
         // The tenant must be resolved *before* route model binding runs: every
         // tenant model fails closed through `TenantScope`, so binding `{order}`
