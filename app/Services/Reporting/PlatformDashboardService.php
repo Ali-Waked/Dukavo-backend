@@ -220,13 +220,13 @@ class PlatformDashboardService
         $row = DB::table($perUser)
             ->selectRaw('SUM(CASE WHEN has_platform = 1 AND has_member = 0 THEN 1 ELSE 0 END) AS platform_only')
             ->selectRaw('SUM(CASE WHEN has_platform = 0 AND has_member = 1 THEN 1 ELSE 0 END) AS members_only')
-            ->selectRaw('SUM(CASE WHEN has_platform = 1 AND has_member = 1 THEN 1 ELSE 0 END) AS both')
+            ->selectRaw('SUM(CASE WHEN has_platform = 1 AND has_member = 1 THEN 1 ELSE 0 END) AS platform_and_member')
             ->first();
 
         return [
             'platform_only' => (int) ($row->platform_only ?? 0),
             'members_only' => (int) ($row->members_only ?? 0),
-            'both' => (int) ($row->both ?? 0),
+            'both' => (int) ($row->platform_and_member ?? 0),
         ];
     }
 
