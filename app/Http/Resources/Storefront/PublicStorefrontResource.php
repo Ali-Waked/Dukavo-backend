@@ -7,6 +7,7 @@ namespace App\Http\Resources\Storefront;
 use App\Models\Store;
 use App\Services\Currency\CurrencyCatalog;
 use App\Services\Storefront\StorefrontSettings;
+use App\Support\PreferredLocale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -22,12 +23,13 @@ class PublicStorefrontResource extends JsonResource
     {
         $catalog = app(CurrencyCatalog::class);
         $currency = $catalog->supports($this->currency) ? $catalog->meta((string) $this->currency) : null;
+        $locale = PreferredLocale::from($request);
 
         return [
-            'name' => $this->name,
+            'name' => $this->resource->localizedName($locale),
             'slug' => $this->slug,
             'tenant_slug' => $this->whenLoaded('tenant', fn () => $this->tenant?->slug),
-            'description' => $this->description,
+            'description' => $this->resource->localizedDescription($locale),
             'logo_url' => $this->logo_url,
             'email' => $this->email,
             'phone' => $this->phone,
@@ -35,7 +37,8 @@ class PublicStorefrontResource extends JsonResource
             'currency_symbol' => $currency['symbol'] ?? null,
             'currency_decimals' => $this->currency_decimals ?? $currency['decimals'] ?? 2,
             'timezone' => $this->timezone,
-            'settings' => StorefrontSettings::merge($this->storefront_settings),
+            'locale' => $locale,
+            'settings' => StorefrontSettings::localized($this->storefront_settings, $locale),
         ];
     }
 }

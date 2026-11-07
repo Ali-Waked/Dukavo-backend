@@ -7,6 +7,7 @@ namespace App\Services\Catalog;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\Category;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -41,8 +42,10 @@ class CategoryService
             return DB::transaction(fn (): Category => $tenant->categories()->create([
                 'parent_id' => $attributes['parent_id'] ?? null,
                 'name' => $attributes['name'],
+                'name_ar' => $attributes['name_ar'] ?? null,
                 'slug' => $slug,
                 'description' => $attributes['description'] ?? null,
+                'description_ar' => $attributes['description_ar'] ?? null,
                 'is_active' => $attributes['is_active'] ?? true,
                 'sort_order' => $attributes['sort_order'] ?? 0,
             ]));
@@ -99,19 +102,56 @@ class CategoryService
     /**
      * @return array<int, Category>
      */
-    public function tree(bool $onlyActive = true): array
+    public function tree(bool $onlyActive = true, ?string $search = null): array
     {
-        $categories = Category::query()
+        $base = fn (): Builder => Category::query()
             ->when($onlyActive, fn ($query) => $query->active())
             // The tree renders a product count per node, so it is counted here
             // rather than left to each node to query on its own. Soft-deleted
             // products and other tenants' rows are excluded by the relation.
             ->withCount('products')
             ->orderBy('sort_order')
-            ->orderBy('name')
-            ->get();
+            ->orderBy('name');
 
-        return $this->buildTree($categories);
+        $categories = $base();
+
+        // Filtering the tree must not orphan a matching child: searching for
+        // the Arabic name of "Juices" still has to show it beneath "Beverages",
+        // even though the parent's own copy did not match. Walk up from every
+        // match and include the ancestors needed to render the path.
+        if ($search !== null && trim($search) !== '') {
+            $matches = (clone $categories)->search($search)->get();
+
+            if ($matches->isEmpty()) {
+                return [];
+            }
+
+            $wanted = $matches->modelKeys();
+            $parentIds = $matches->pluck('parent_id')->filter()->unique()->values()->all();
+
+            while ($parentIds !== []) {
+                $ancestors = (clone $base())->whereKey($parentIds)->get();
+                $nextParentIds = [];
+
+                foreach ($ancestors as $ancestor) {
+                    if (in_array($ancestor->getKey(), $wanted, true)) {
+                        continue;
+                    }
+
+                    $wanted[] = $ancestor->getKey();
+
+                    if ($ancestor->parent_id !== null) {
+                        $nextParentIds[] = $ancestor->parent_id;
+                    }
+                }
+
+                $parentIds = array_values(array_unique($nextParentIds));
+            }
+
+            $categories->whereKey($wanted);
+        }
+
+        return $this->buildTree($categories->get());
     }
 
     private function assertValidParent(Category $category, int $parentId): void

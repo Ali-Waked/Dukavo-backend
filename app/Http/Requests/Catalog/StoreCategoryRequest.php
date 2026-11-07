@@ -29,9 +29,11 @@ class StoreCategoryRequest extends ApiRequest
     {
         return [
             'name' => ['required', 'string', 'max:120'],
+            'name_ar' => ['nullable', 'string', 'max:120'],
             'slug' => ['nullable', 'string', 'max:120', 'alpha_dash', $this->tenantUnique('categories', 'slug')],
             'parent_id' => ['nullable', 'integer', $this->tenantExists(Category::class)],
             'description' => ['nullable', 'string', 'max:1000'],
+            'description_ar' => ['nullable', 'string', 'max:1000'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:100000'],
         ];

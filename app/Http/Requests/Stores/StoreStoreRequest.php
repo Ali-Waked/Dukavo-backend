@@ -25,6 +25,9 @@ class StoreStoreRequest extends ApiRequest
     {
         return [
             'name' => ['required', 'string', 'max:120'],
+            'name_ar' => ['nullable', 'string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'description_ar' => ['nullable', 'string', 'max:2000'],
             'slug' => ['nullable', 'string', 'max:120', 'alpha_dash', $this->tenantUnique('stores', 'slug')],
             'status' => ['sometimes', Rule::enum(StoreStatus::class)],
             'email' => ['nullable', 'email:rfc', 'max:190'],

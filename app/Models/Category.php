@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\LocalizedText;
 use Database\Factories\CategoryFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -20,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * category, and the self foreign key cascades deletions as `restrict` to keep
  * accidental subtree deletion impossible by accident.
  */
-#[Fillable(['tenant_id', 'parent_id', 'name', 'slug', 'description', 'is_active', 'sort_order'])]
+#[Fillable(['tenant_id', 'parent_id', 'name', 'name_ar', 'slug', 'description', 'description_ar', 'is_active', 'sort_order'])]
 class Category extends Model
 {
     /** @use HasFactory<CategoryFactory> */
@@ -31,7 +32,7 @@ class Category extends Model
      */
     protected function auditAttributes(): array
     {
-        return ['name', 'slug', 'description', 'is_active', 'sort_order'];
+        return ['name', 'name_ar', 'slug', 'description', 'description_ar', 'is_active', 'sort_order'];
     }
 
     protected function casts(): array
@@ -76,5 +77,40 @@ class Category extends Model
     protected function active(Builder $query): void
     {
         $query->where('is_active', true);
+    }
+
+    /**
+     * Free-text search across both languages. A merchant searching in Arabic
+     * should find a category whose English name they never typed, and vice
+     * versa, so every user-visible text column is matched.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function search(Builder $query, ?string $term): void
+    {
+        $query->when($term, function (Builder $builder, string $value): void {
+            $escaped = addcslashes($value, '%_\\');
+
+            $builder->where(function (Builder $inner) use ($escaped): void {
+                $inner->where('name', 'like', "%{$escaped}%")
+                    ->orWhere('name_ar', 'like', "%{$escaped}%")
+                    ->orWhere('slug', 'like', "%{$escaped}%")
+                    ->orWhere('description', 'like', "%{$escaped}%")
+                    ->orWhere('description_ar', 'like', "%{$escaped}%");
+            });
+        });
+    }
+
+    /** The best available category name for the requested locale. */
+    public function localizedName(string $locale): string
+    {
+        return (string) LocalizedText::pick($this->name, $this->name_ar, $locale);
+    }
+
+    /** The best available description, or null when neither language has one. */
+    public function localizedDescription(string $locale): ?string
+    {
+        return LocalizedText::pick($this->description, $this->description_ar, $locale);
     }
 }

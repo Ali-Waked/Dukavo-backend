@@ -49,7 +49,10 @@ class StoreService
 
                 $store = $tenant->stores()->create([
                     'name' => $attributes['name'],
+                    'name_ar' => $attributes['name_ar'] ?? null,
                     'slug' => $slug,
+                    'description' => $attributes['description'] ?? null,
+                    'description_ar' => $attributes['description_ar'] ?? null,
                     'status' => $attributes['status'] ?? StoreStatus::Active,
                     'email' => $attributes['email'] ?? null,
                     'phone' => $attributes['phone'] ?? null,

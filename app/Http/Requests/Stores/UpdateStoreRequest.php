@@ -30,6 +30,9 @@ class UpdateStoreRequest extends ApiRequest
 
         return [
             'name' => ['sometimes', 'string', 'max:120'],
+            'name_ar' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'description_ar' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'slug' => ['sometimes', 'nullable', 'string', 'max:120', 'alpha_dash', $this->tenantUnique('stores', 'slug', $ignoreId)],
             'status' => ['sometimes', Rule::enum(StoreStatus::class)],
             'email' => ['sometimes', 'nullable', 'email:rfc', 'max:190'],

@@ -32,9 +32,11 @@ class UpdateCategoryRequest extends ApiRequest
 
         return [
             'name' => ['sometimes', 'string', 'max:120'],
+            'name_ar' => ['sometimes', 'nullable', 'string', 'max:120'],
             'slug' => ['sometimes', 'nullable', 'string', 'max:120', 'alpha_dash', $this->tenantUnique('categories', 'slug', $ignoreId)],
             'parent_id' => ['sometimes', 'nullable', 'integer', $this->tenantExists(Category::class)],
             'description' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'description_ar' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:100000'],
         ];

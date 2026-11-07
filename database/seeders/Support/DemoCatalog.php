@@ -23,7 +23,7 @@ final class DemoCatalog
     /**
      * Root categories and their children, in navigation order.
      *
-     * @return list<array{slug: string, name: string, description: string, children: list<array{slug: string, name: string, description: string}>}>
+     * @return list<array{slug: string, name: string, name_ar: string, description: string, description_ar: string, children: list<array{slug: string, name: string, name_ar: string, description: string, description_ar: string}>}>
      */
     public static function categories(): array
     {
@@ -31,76 +31,96 @@ final class DemoCatalog
             [
                 'slug' => 'fresh-produce',
                 'name' => 'Fresh Produce',
+                'name_ar' => 'المنتجات الطازجة',
                 'description' => 'Fruit and vegetables delivered fresh from local growers.',
+                'description_ar' => 'فواكه وخضروات طازجة تصل يوميًا من المزارع المحلية.',
                 'children' => [
-                    ['slug' => 'fruits', 'name' => 'Fruits', 'description' => 'Seasonal and everyday fruit.'],
-                    ['slug' => 'vegetables', 'name' => 'Vegetables', 'description' => 'Salad, cooking and root vegetables.'],
+                    ['slug' => 'fruits', 'name' => 'Fruits', 'name_ar' => 'الفواكه', 'description' => 'Seasonal and everyday fruit.', 'description_ar' => 'فواكه موسمية ويومية.'],
+                    ['slug' => 'vegetables', 'name' => 'Vegetables', 'name_ar' => 'الخضروات', 'description' => 'Salad, cooking and root vegetables.', 'description_ar' => 'خضروات للسلطات والطهي والجذور.'],
                 ],
             ],
             [
                 'slug' => 'dairy-eggs',
                 'name' => 'Dairy & Eggs',
+                'name_ar' => 'الألبان والبيض',
                 'description' => 'Milk, cheese, yoghurt and free-range eggs.',
+                'description_ar' => 'حليب وأجبان ولبن وبيض بلدي.',
                 'children' => [],
             ],
             [
                 'slug' => 'bakery',
                 'name' => 'Bakery',
+                'name_ar' => 'المخبوزات',
                 'description' => 'Baked fresh every morning.',
+                'description_ar' => 'مخبوزات طازجة كل صباح.',
                 'children' => [],
             ],
             [
                 'slug' => 'beverages',
                 'name' => 'Beverages',
+                'name_ar' => 'المشروبات',
                 'description' => 'Soft drinks, juices, water, coffee and tea.',
+                'description_ar' => 'مشروبات غازية وعصائر ومياه وقهوة وشاي.',
                 'children' => [
-                    ['slug' => 'soft-drinks', 'name' => 'Soft Drinks', 'description' => 'Colas, lemon-lime and flavoured sodas.'],
-                    ['slug' => 'juices', 'name' => 'Juices', 'description' => 'Chilled juice and nectar.'],
-                    ['slug' => 'water', 'name' => 'Water', 'description' => 'Still and sparkling bottled water.'],
-                    ['slug' => 'coffee-tea', 'name' => 'Coffee & Tea', 'description' => 'Ground, instant and loose-leaf.'],
+                    ['slug' => 'soft-drinks', 'name' => 'Soft Drinks', 'name_ar' => 'المشروبات الغازية', 'description' => 'Colas, lemon-lime and flavoured sodas.', 'description_ar' => 'كولا وليمون وصودا بنكهات.'],
+                    ['slug' => 'juices', 'name' => 'Juices', 'name_ar' => 'العصائر', 'description' => 'Chilled juice and nectar.', 'description_ar' => 'عصائر ونكتار مبرّد.'],
+                    ['slug' => 'water', 'name' => 'Water', 'name_ar' => 'المياه', 'description' => 'Still and sparkling bottled water.', 'description_ar' => 'مياه معبأة ساكنة وفوارة.'],
+                    ['slug' => 'coffee-tea', 'name' => 'Coffee & Tea', 'name_ar' => 'القهوة والشاي', 'description' => 'Ground, instant and loose-leaf.', 'description_ar' => 'قهوة مطحونة وسريعة التحضير وأوراق شاي.'],
                 ],
             ],
             [
                 'slug' => 'snacks',
                 'name' => 'Snacks',
+                'name_ar' => 'الوجبات الخفيفة',
                 'description' => 'Chocolate, crisps and nuts for any time of day.',
+                'description_ar' => 'شوكولاتة ورقائق ومكسرات في أي وقت.',
                 'children' => [
-                    ['slug' => 'chocolate', 'name' => 'Chocolate & Sweets', 'description' => 'Bars, blocks and sharing bags.'],
-                    ['slug' => 'crisps-nuts', 'name' => 'Crisps & Nuts', 'description' => 'Savoury snacks and roasted nuts.'],
+                    ['slug' => 'chocolate', 'name' => 'Chocolate & Sweets', 'name_ar' => 'الشوكولاتة والحلويات', 'description' => 'Bars, blocks and sharing bags.', 'description_ar' => 'ألواح وقطع وأكياس للمشاركة.'],
+                    ['slug' => 'crisps-nuts', 'name' => 'Crisps & Nuts', 'name_ar' => 'الرقائق والمكسرات', 'description' => 'Savoury snacks and roasted nuts.', 'description_ar' => 'وجبات مالحة ومكسرات محمصة.'],
                 ],
             ],
             [
                 'slug' => 'frozen-foods',
                 'name' => 'Frozen Foods',
+                'name_ar' => 'الأطعمة المجمدة',
                 'description' => 'Frozen vegetables, fish, pizza and ready-to-cook favourites.',
+                'description_ar' => 'خضروات وأسماك وبيتزا وأطباق جاهزة مجمدة.',
                 'children' => [],
             ],
             [
                 'slug' => 'household',
                 'name' => 'Household',
+                'name_ar' => 'مستلزمات المنزل',
                 'description' => 'Cleaning, laundry and paper goods for the home.',
+                'description_ar' => 'مستلزمات التنظيف والغسيل والورقيات للمنزل.',
                 'children' => [],
             ],
             [
                 'slug' => 'personal-care',
                 'name' => 'Personal Care',
+                'name_ar' => 'العناية الشخصية',
                 'description' => 'Hair, body and oral care essentials.',
+                'description_ar' => 'أساسيات العناية بالشعر والجسم والفم.',
                 'children' => [],
             ],
             [
                 'slug' => 'baby-products',
                 'name' => 'Baby Products',
+                'name_ar' => 'منتجات الأطفال',
                 'description' => 'Nappies, wipes and infant nutrition.',
+                'description_ar' => 'حفاضات ومناديل وتغذية للرضع.',
                 'children' => [],
             ],
             [
                 'slug' => 'pantry',
                 'name' => 'Pantry',
+                'name_ar' => 'المؤن',
                 'description' => 'Staples, oils, condiments and tinned goods.',
+                'description_ar' => 'مواد أساسية وزيوت وتوابل ومعلبات.',
                 'children' => [
-                    ['slug' => 'rice-grains', 'name' => 'Rice & Grains', 'description' => 'Rice, pasta and bulgur.'],
-                    ['slug' => 'oils-sauces', 'name' => 'Oils & Sauces', 'description' => 'Cooking oils, dressings and condiments.'],
-                    ['slug' => 'canned-goods', 'name' => 'Canned Goods', 'description' => 'Tinned vegetables, pulses and paste.'],
+                    ['slug' => 'rice-grains', 'name' => 'Rice & Grains', 'name_ar' => 'الأرز والحبوب', 'description' => 'Rice, pasta and bulgur.', 'description_ar' => 'أرز ومعكرونة وبرغل.'],
+                    ['slug' => 'oils-sauces', 'name' => 'Oils & Sauces', 'name_ar' => 'الزيوت والصلصات', 'description' => 'Cooking oils, dressings and condiments.', 'description_ar' => 'زيوت طهي وتتبيلات وتوابل.'],
+                    ['slug' => 'canned-goods', 'name' => 'Canned Goods', 'name_ar' => 'المعلبات', 'description' => 'Tinned vegetables, pulses and paste.', 'description_ar' => 'خضروات وبقوليات ومعجون معلّب.'],
                 ],
             ],
         ];

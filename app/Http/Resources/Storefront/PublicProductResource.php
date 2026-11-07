@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources\Storefront;
 
 use App\Models\Product;
+use App\Support\PreferredLocale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -28,6 +29,8 @@ class PublicProductResource extends JsonResource
             fn ($variant): int => (int) $variant->inventories->sum(fn ($inventory): int => $inventory->available())
         );
 
+        $locale = PreferredLocale::from($request);
+
         return [
             'slug' => $this->slug,
             'name' => $this->name,
@@ -39,8 +42,9 @@ class PublicProductResource extends JsonResource
             'available' => max(0, $available),
             'category' => $this->whenLoaded('category', fn () => $this->category ? [
                 'slug' => $this->category->slug,
-                'name' => $this->category->name,
+                'name' => $this->category->localizedName($locale),
             ] : null),
+            'locale' => $locale,
             'images' => $this->whenLoaded('images', fn () => $this->images->map(fn ($image): array => [
                 'url' => Storage::disk($image->disk)->url($image->path),
                 'alt_text' => $image->alt_text,

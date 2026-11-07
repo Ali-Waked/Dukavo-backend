@@ -26,6 +26,12 @@ use Illuminate\Support\Facades\File;
  * labels. Product rows are written directly rather than through
  * ProductService because a demo needs products that were "created" over the
  * last few weeks, not all of them today.
+ *
+ * Idempotent by tenant slug, product slug and variant SKU. A second run updates
+ * the demonstration rows in place instead of duplicating them, and leaves any
+ * category or product a merchant created with a different slug untouched.
+ * Categories and stores carry Arabic copy alongside the canonical English, so
+ * the demo looks bilingual without a second seed pass.
  */
 class CatalogSeeder extends Seeder
 {
@@ -61,12 +67,13 @@ class CatalogSeeder extends Seeder
                 continue;
             }
 
-            $productDate = now()->subDays(rand(40, 85));
             $price = min(array_column($spec['variants'], 'price'));
             $cost = min(array_column($spec['variants'], 'cost'));
 
-            $product = Product::forceCreate([
-                'tenant_id' => $tenant->getKey(),
+            $product = Product::query()->firstOrNew(['slug' => $spec['key']]);
+            $isNewProduct = ! $product->exists;
+
+            $product->fill([
                 'store_id' => null,
                 'category_id' => DemoCatalog::categoryId($categoryIds, $spec['category']),
                 'name' => $spec['name'],
@@ -78,13 +85,24 @@ class CatalogSeeder extends Seeder
                 'cost' => $cost,
                 'currency' => 'USD',
                 'is_taxable' => $spec['taxable'],
-                'created_at' => $productDate,
-                'updated_at' => $productDate,
             ]);
 
+            // Only a new row gets a demonstration creation date. An existing row
+            // keeps the timestamp it already has, so re-seeding does not shuffle
+            // the "newest products" ordering or rewrite history.
+            if ($isNewProduct) {
+                $productDate = now()->subDays(40 + (($index * 7) % 46));
+                $product->forceFill(['created_at' => $productDate, 'updated_at' => $productDate]);
+            }
+
+            $product->save();
+            $productDate = $product->created_at ?? now();
+
             foreach ($spec['variants'] as $position => $variant) {
-                ProductVariant::forceCreate([
-                    'tenant_id' => $tenant->getKey(),
+                $record = ProductVariant::query()->firstOrNew(['sku' => $variant['sku']]);
+                $isNewVariant = ! $record->exists;
+
+                $record->fill([
                     'product_id' => $product->getKey(),
                     'name' => $variant['name'],
                     'sku' => $variant['sku'],
@@ -92,24 +110,35 @@ class CatalogSeeder extends Seeder
                     'cost' => $variant['cost'],
                     'is_default' => $position === 0,
                     'position' => $position + 1,
-                    'created_at' => $productDate,
-                    'updated_at' => $productDate,
                 ]);
+
+                if ($isNewVariant) {
+                    $record->forceFill(['created_at' => $productDate, 'updated_at' => $productDate]);
+                }
+
+                $record->save();
             }
 
             if (is_file($this->imageDirectory().'/'.$key.'.jpg')) {
-                ProductImage::forceCreate([
-                    'tenant_id' => $tenant->getKey(),
+                $image = ProductImage::query()->firstOrNew([
                     'product_id' => $product->getKey(),
+                    'path' => 'products/'.$key.'.jpg',
+                ]);
+                $isNewImage = ! $image->exists;
+
+                $image->fill([
                     'product_variant_id' => null,
                     'disk' => 'public',
-                    'path' => 'products/'.$key.'.jpg',
                     'alt_text' => $spec['name'],
                     'is_primary' => true,
                     'position' => 0,
-                    'created_at' => $productDate,
-                    'updated_at' => $productDate,
                 ]);
+
+                if ($isNewImage) {
+                    $image->forceFill(['created_at' => $productDate, 'updated_at' => $productDate]);
+                }
+
+                $image->save();
             } else {
                 $missingImages[] = $key;
             }
@@ -139,32 +168,48 @@ class CatalogSeeder extends Seeder
         $treeDate = $tenant->created_at ?? now()->subDays(110);
 
         foreach (DemoCatalog::categories() as $rootIndex => $root) {
-            $parent = Category::forceCreate([
-                'tenant_id' => $tenant->getKey(),
+            $parent = Category::query()->firstOrNew(['slug' => $root['slug']]);
+            $isNewParent = ! $parent->exists;
+
+            $parent->fill([
                 'parent_id' => null,
                 'name' => $root['name'],
-                'slug' => $root['slug'],
+                'name_ar' => $root['name_ar'],
                 'description' => $root['description'],
+                'description_ar' => $root['description_ar'],
                 'is_active' => true,
                 'sort_order' => ($rootIndex + 1) * 10,
-                'created_at' => $treeDate,
-                'updated_at' => $treeDate,
             ]);
+
+            // Only a new row is backdated. Re-seeding must not rewrite the
+            // creation date of a category a merchant may already have seen.
+            if ($isNewParent) {
+                $parent->forceFill(['created_at' => $treeDate, 'updated_at' => $treeDate]);
+            }
+
+            $parent->save();
 
             $ids[$root['slug']] = $parent->getKey();
 
             foreach ($root['children'] as $childIndex => $child) {
-                $category = Category::forceCreate([
-                    'tenant_id' => $tenant->getKey(),
+                $category = Category::query()->firstOrNew(['slug' => $child['slug']]);
+                $isNewChild = ! $category->exists;
+
+                $category->fill([
                     'parent_id' => $parent->getKey(),
                     'name' => $child['name'],
-                    'slug' => $child['slug'],
+                    'name_ar' => $child['name_ar'],
                     'description' => $child['description'],
+                    'description_ar' => $child['description_ar'],
                     'is_active' => true,
                     'sort_order' => ($childIndex + 1) * 10,
-                    'created_at' => $treeDate,
-                    'updated_at' => $treeDate,
                 ]);
+
+                if ($isNewChild) {
+                    $category->forceFill(['created_at' => $treeDate, 'updated_at' => $treeDate]);
+                }
+
+                $category->save();
 
                 $ids[$child['slug']] = $category->getKey();
             }

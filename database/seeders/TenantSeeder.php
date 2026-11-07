@@ -43,20 +43,37 @@ class TenantSeeder extends Seeder
             ->get();
 
         foreach (DemoPeople::tenants() as $definition) {
-            $createdAt = now()->subDays(rand(95, 120))->startOfDay();
+            $tenant = Tenant::query()->where('slug', $definition['slug'])->first();
+            $isNewTenant = ! $tenant instanceof Tenant;
 
-            $tenant = $tenants->createTenant([
-                'name' => $definition['name'],
-                'slug' => $definition['slug'],
-                'contact_email' => $definition['contact_email'],
-                'phone' => $definition['phone'],
-                'currency' => 'USD',
-                'timezone' => 'Asia/Gaza',
-                'locale' => $definition['locale'],
-                'store_name' => $definition['stores'][0]['name'],
-            ]);
+            if ($isNewTenant) {
+                $tenant = $tenants->createTenant([
+                    'name' => $definition['name'],
+                    'slug' => $definition['slug'],
+                    'contact_email' => $definition['contact_email'],
+                    'phone' => $definition['phone'],
+                    'currency' => 'USD',
+                    'timezone' => 'Asia/Gaza',
+                    'locale' => $definition['locale'],
+                    'store_name' => $definition['stores'][0]['name'],
+                ]);
+            } else {
+                $tenant->forceFill([
+                    'name' => $definition['name'],
+                    'contact_email' => $definition['contact_email'],
+                    'phone' => $definition['phone'],
+                    'currency' => 'USD',
+                    'timezone' => 'Asia/Gaza',
+                    'locale' => $definition['locale'],
+                ])->save();
+            }
 
-            $tenant->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt])->save();
+            // A fresh demo tenant is backdated so its reporting windows look
+            // lived-in; an existing tenant keeps the age it already has.
+            $createdAt = $tenant->created_at ?? now()->subDays(rand(95, 120))->startOfDay();
+            if ($isNewTenant) {
+                $tenant->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt])->save();
+            }
 
             // Store, member and WhatsApp rows are tenant scoped, so they are
             // written inside the tenant's context, exactly as the HTTP layer
@@ -88,11 +105,14 @@ class TenantSeeder extends Seeder
         foreach ($definition['stores'] as $index => $store) {
             $attributes = [
                 'name' => $store['name'],
+                'name_ar' => $store['name_ar'],
                 'slug' => $store['slug'],
+                'description' => $store['description'],
+                'description_ar' => $store['description_ar'],
                 'email' => $store['email'],
                 'phone' => $store['phone'],
-                'created_at' => $createdAt,
-                'updated_at' => $createdAt,
+                'storefront_enabled' => true,
+                'storefront_settings' => $store['storefront'],
             ];
 
             if ($index === 0 && $default !== null) {
@@ -104,13 +124,23 @@ class TenantSeeder extends Seeder
                 continue;
             }
 
-            Store::forceCreate($attributes + [
-                'tenant_id' => $tenant->getKey(),
+            // Idempotent by slug: a second run updates the same branch rather
+            // than creating a duplicate, and a branch the merchant added with a
+            // different slug is never touched.
+            $record = Store::query()->firstOrNew(['slug' => $store['slug']]);
+
+            $record->fill($attributes + [
                 'status' => StoreStatus::Active,
                 'currency' => $tenant->currency,
                 'timezone' => $tenant->timezone,
                 'is_default' => false,
             ]);
+
+            if (! $record->exists) {
+                $record->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt]);
+            }
+
+            $record->save();
         }
     }
 
@@ -129,6 +159,12 @@ class TenantSeeder extends Seeder
         Role $staffRole,
     ): void {
         foreach ($definition['members'] as $member) {
+            // A repeated seed must not create a second account for the same
+            // person; their role membership is already in place.
+            if (User::query()->where('email', $member['email'])->exists()) {
+                continue;
+            }
+
             $user = $users->createForTenant($tenant, $member['role'] === 'merchant' ? $merchantRole : $staffRole, [
                 'name' => $member['name'],
                 'email' => $member['email'],
@@ -156,11 +192,12 @@ class TenantSeeder extends Seeder
      */
     private function whatsapp(Tenant $tenant, array $definition, Carbon $connectedAt): void
     {
-        WhatsappAccount::forceCreate([
-            'tenant_id' => $tenant->getKey(),
+        $account = WhatsappAccount::query()->firstOrNew(['phone_number_id' => 'DEMO_PHONE_NUMBER_ID']);
+        $isNewAccount = ! $account->exists;
+
+        $account->fill([
             'store_id' => null,
             'name' => $definition['whatsapp']['name'],
-            'phone_number_id' => 'DEMO_PHONE_NUMBER_ID',
             'phone_number' => $definition['whatsapp']['phone'],
             'business_account_id' => 'DEMO_BUSINESS_ACCOUNT_ID',
             'access_token' => 'DEMO_ACCESS_TOKEN',
@@ -169,8 +206,12 @@ class TenantSeeder extends Seeder
             'is_active' => true,
             'connected_at' => $connectedAt,
             'last_synced_at' => now(),
-            'created_at' => $connectedAt,
-            'updated_at' => $connectedAt,
         ]);
+
+        if ($isNewAccount) {
+            $account->forceFill(['created_at' => $connectedAt, 'updated_at' => $connectedAt]);
+        }
+
+        $account->save();
     }
 }

@@ -31,7 +31,8 @@ class CategoryController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $categories = Category::query()
-            ->active()
+            ->when(! $request->boolean('include_inactive'), fn ($query) => $query->active())
+            ->search($request->filled('search') ? $request->string('search')->toString() : null)
             // Counted here so `CategoryResource`'s `products_count` is populated
             // instead of being omitted, which the catalogue UI would render as a
             // blank "-". The relation respects both soft deletes (archived
@@ -49,7 +50,10 @@ class CategoryController extends Controller
      */
     public function tree(Request $request): JsonResponse
     {
-        $tree = $this->categories->tree($request->boolean('include_inactive') === false);
+        $tree = $this->categories->tree(
+            $request->boolean('include_inactive') === false,
+            $request->filled('search') ? $request->string('search')->toString() : null,
+        );
 
         return response()->json([
             'success' => true,
