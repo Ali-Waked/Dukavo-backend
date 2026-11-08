@@ -8,6 +8,7 @@ use App\Enums\InventoryMovementType;
 use App\Models\Inventory;
 use App\Models\InventoryMovement;
 use App\Models\Store;
+use App\Services\Currency\CurrencyCatalog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -23,6 +24,8 @@ use Illuminate\Support\Collection;
  */
 class InventoryIntelligenceService
 {
+    public function __construct(private readonly CurrencyCatalog $currencies) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -221,8 +224,10 @@ class InventoryIntelligenceService
             };
 
             $unitCost = $this->unitCost($inventory);
-            $value = $unitCost !== null ? round($unitCost * $inventory->quantity, 2) : null;
-            $currency = $inventory->store?->currency ?? $inventory->product?->currency ?? 'USD';
+            $currency = $inventory->store?->currency ?? $inventory->product?->currency ?? $this->currencies->default();
+            $value = $unitCost !== null
+                ? $this->roundForCurrency($unitCost * $inventory->quantity, $currency)
+                : null;
 
             return [
                 'id' => $inventory->getKey(),
@@ -458,7 +463,7 @@ class InventoryIntelligenceService
 
         ksort($valuation);
         $summary['valuation'] = array_values(array_map(function (array $entry): array {
-            $entry['value'] = round($entry['value'], 2);
+            $entry['value'] = $this->roundForCurrency($entry['value'], $entry['currency']);
 
             return $entry;
         }, $valuation));
@@ -497,7 +502,7 @@ class InventoryIntelligenceService
         }
 
         $stores = array_values(array_map(function (array $store): array {
-            $store['inventory_value'] = round($store['inventory_value'], 2);
+            $store['inventory_value'] = $this->roundForCurrency($store['inventory_value'], $store['currency']);
 
             return $store;
         }, $stores));
@@ -505,6 +510,16 @@ class InventoryIntelligenceService
         usort($stores, fn (array $left, array $right): int => strcmp((string) $left['store'], (string) $right['store']));
 
         return $stores;
+    }
+
+    /**
+     * Inventory value follows the currency's own minor unit: a Kuwaiti dinar
+     * total has three decimals, a yen total none. Unknown codes fall back to two
+     * rather than throwing inside a read model.
+     */
+    private function roundForCurrency(float $amount, string $currency): float
+    {
+        return round($amount, $this->currencies->supports($currency) ? $this->currencies->decimals($currency) : 2);
     }
 
     /**

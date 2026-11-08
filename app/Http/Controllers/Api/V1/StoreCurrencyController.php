@@ -12,6 +12,7 @@ use App\Models\Store;
 use App\Services\Currency\CurrencyCatalog;
 use App\Services\Currency\StoreCurrencyService;
 use App\Support\ApiResponse;
+use App\Support\PreferredLocale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -31,12 +32,17 @@ class StoreCurrencyController extends Controller
 
     /**
      * The supported currencies, for the selector.
+     *
+     * Names and symbols are resolved for the request language (`?locale=`,
+     * then `Accept-Language`) so an Arabic merchant sees Arabic names without
+     * translating a catalogue on the client.
      */
-    public function options(): JsonResponse
+    public function options(Request $request): JsonResponse
     {
         return ApiResponse::success(data: [
             'default' => $this->catalog->default(),
-            'currencies' => $this->catalog->options(),
+            'locale' => PreferredLocale::from($request),
+            'currencies' => $this->catalog->options(PreferredLocale::from($request)),
         ]);
     }
 

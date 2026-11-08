@@ -8,6 +8,7 @@ use App\Exceptions\ExchangeRateUnavailable;
 use App\Models\CurrencyConversion;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\ShippingZone;
 use App\Models\Store;
 use App\Models\Tenant;
 use App\Models\User;
@@ -108,6 +109,36 @@ class StoreCurrencyTest extends TestCase
         $this->assertSame('EUR', $conversion->to_currency);
         $this->assertSame(0.5, (float) $conversion->exchange_rate);
         $this->assertSame('test', $conversion->rate_source);
+    }
+
+    public function test_conversion_reprices_shipping_fees_and_free_shipping_thresholds(): void
+    {
+        $this->bindRate(0.5);
+
+        $zone = $this->withinTenant($this->tenant, fn (): ShippingZone => ShippingZone::factory()->forStore($this->store)->create([
+            'fee' => 10,
+            'free_shipping_threshold' => 100,
+        ]));
+
+        $this->actingAs($this->user)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->getJson('/api/v1/tenant/stores/'.$this->store->getKey().'/currency/preview?currency=EUR')
+            ->assertOk()
+            ->assertJsonPath('data.shipping_zones', 1);
+
+        $this->actingAs($this->user)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->postJson('/api/v1/tenant/stores/'.$this->store->getKey().'/currency', [
+                'currency' => 'EUR',
+                'idempotency_key' => 'convert-shipping',
+                'confirm' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.conversion.shipping_zones_converted', 1);
+
+        $zone->refresh();
+        $this->assertSame(5.0, (float) $zone->fee);
+        $this->assertSame(50.0, (float) $zone->free_shipping_threshold);
     }
 
     public function test_replaying_an_idempotency_key_returns_the_same_receipt_without_converting_again(): void
@@ -235,6 +266,74 @@ class StoreCurrencyTest extends TestCase
             ->assertNotFound();
 
         $this->assertSame('USD', $foreign->refresh()->currency);
+    }
+
+    public function test_converting_the_default_store_synchronises_the_workspace_currency(): void
+    {
+        $this->bindRate(0.5);
+
+        $this->actingAs($this->user)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->postJson('/api/v1/tenant/stores/'.$this->store->getKey().'/currency', [
+                'currency' => 'EUR',
+                'idempotency_key' => 'sync-workspace',
+                'confirm' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.store.currency', 'EUR');
+
+        $this->assertSame('EUR', $this->tenant->fresh()->currency);
+
+        // The active tenant payload the SPA boots from must agree as well.
+        $this->actingAs($this->user)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.active_tenant.currency', 'EUR');
+    }
+
+    public function test_converting_a_secondary_store_does_not_change_the_workspace_currency(): void
+    {
+        $this->bindRate(0.5);
+
+        $secondary = $this->withinTenant($this->tenant, fn (): Store => Store::factory()->create([
+            'tenant_id' => $this->tenant->getKey(),
+            'currency' => 'USD',
+            'is_default' => false,
+        ]));
+
+        $this->actingAs($this->user)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->postJson('/api/v1/tenant/stores/'.$secondary->getKey().'/currency', [
+                'currency' => 'EUR',
+                'idempotency_key' => 'sync-secondary',
+                'confirm' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.store.currency', 'EUR');
+
+        $this->assertSame('EUR', $secondary->fresh()->currency);
+        $this->assertSame('USD', $this->tenant->fresh()->currency);
+        $this->assertSame('USD', $this->store->fresh()->currency);
+    }
+
+    public function test_promoting_a_store_synchronises_the_workspace_currency(): void
+    {
+        $secondary = $this->withinTenant($this->tenant, fn (): Store => Store::factory()->create([
+            'tenant_id' => $this->tenant->getKey(),
+            'currency' => 'AED',
+            'is_default' => false,
+        ]));
+
+        $this->actingAs($this->user)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->postJson('/api/v1/tenant/stores/'.$secondary->getKey().'/default')
+            ->assertOk()
+            ->assertJsonPath('data.currency', 'AED');
+
+        $this->assertSame('AED', $this->tenant->fresh()->currency);
+        $this->assertFalse($this->store->fresh()->is_default);
+        $this->assertTrue($secondary->fresh()->is_default);
     }
 
     private function bindRate(float $rate): void

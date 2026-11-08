@@ -19,6 +19,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\RecoveryOpportunity;
 use App\Models\Tenant;
+use App\Services\Currency\CurrencyCatalog;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -42,6 +43,7 @@ final class RecoveryDetectionService
     public function __construct(
         private readonly TenantContext $tenants,
         private readonly RecoveryEventService $events,
+        private readonly CurrencyCatalog $currencies,
     ) {}
 
     /**
@@ -184,7 +186,10 @@ final class RecoveryDetectionService
                     'customer_id' => $customer?->getKey(),
                     'cart_id' => $cart->getKey(),
                     'reason' => $reason,
-                    'estimated_value' => round((float) $cart->grand_total, 2),
+                    'estimated_value' => round(
+                        (float) $cart->grand_total,
+                        $this->currencies->supports($cart->currency) ? $this->currencies->decimals((string) $cart->currency) : 2,
+                    ),
                     'currency' => $cart->currency,
                     'last_activity_at' => $cart->updated_at,
                     'meta' => [

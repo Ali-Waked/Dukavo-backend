@@ -10,7 +10,9 @@ use App\Models\Bundle;
 use App\Models\CurrencyConversion;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\ShippingZone;
 use App\Models\Store;
+use App\Models\Tenant;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,6 +27,8 @@ use Illuminate\Support\Facades\DB;
  *    because they describe what the merchant charges today.
  *  - Fixed-amount bundle discounts are converted; percentage discounts are
  *    currency-independent and are left alone.
+ *  - Delivery fees and free-shipping thresholds are current storefront amounts,
+ *    so they are converted with the catalogue.
  *  - Orders, order items, payments and refunds are historical transactions and
  *    are never rewritten. Their original currency and amounts stay intact, and
  *    reporting converts them with the stored rate snapshot instead.
@@ -62,8 +66,10 @@ class StoreCurrencyService
                 'products' => 0,
                 'variants' => 0,
                 'bundles' => 0,
+                'shipping_zones' => 0,
                 'sample' => [],
                 'noop' => true,
+                'updates_workspace_currency' => (bool) $store->is_default,
             ];
         }
 
@@ -94,8 +100,10 @@ class StoreCurrencyService
             'products' => (clone $products)->count(),
             'variants' => ProductVariant::query()->whereIn('product_id', $productIds)->count(),
             'bundles' => $this->bundlesQuery($store)->count(),
+            'shipping_zones' => $this->shippingZonesQuery($store)->count(),
             'sample' => $sample,
             'noop' => false,
+            'updates_workspace_currency' => (bool) $store->is_default,
         ];
     }
 
@@ -173,6 +181,7 @@ class StoreCurrencyService
                 $products = 0;
                 $variants = 0;
                 $bundles = 0;
+                $shippingZones = 0;
 
                 $this->productsQuery($locked)
                     ->orderBy('id')
@@ -214,17 +223,45 @@ class StoreCurrencyService
                         }
                     });
 
+                $this->shippingZonesQuery($locked)
+                    ->orderBy('id')
+                    ->chunkById(200, function ($rows) use ($rate, $target, &$shippingZones): void {
+                        foreach ($rows as $zone) {
+                            $zone->forceFill([
+                                'fee' => $this->convertAmount((float) $zone->fee, $rate->rate, $target),
+                                'free_shipping_threshold' => $zone->free_shipping_threshold === null
+                                    ? null
+                                    : $this->convertAmount((float) $zone->free_shipping_threshold, $rate->rate, $target),
+                            ])->save();
+                            $shippingZones++;
+                        }
+                    });
+
                 $locked->forceFill([
                     'currency' => $target,
                     'currency_decimals' => $this->currencies->decimals($target),
                     'currency_updated_at' => now(),
                 ])->save();
 
+                // The workspace currency mirrors its default store. Syncing it
+                // here — inside the same lock and transaction — is what keeps
+                // the tenant header, storefront and reports from disagreeing
+                // after a conversion. A secondary store does not own the
+                // workspace currency and is left alone.
+                if ($locked->is_default) {
+                    Tenant::query()
+                        ->whereKey($locked->tenant_id)
+                        ->first()
+                        ?->forceFill(['currency' => $target])
+                        ->save();
+                }
+
                 $conversion->forceFill([
                     'status' => 'completed',
                     'products_converted' => $products,
                     'variants_converted' => $variants,
                     'bundles_converted' => $bundles,
+                    'shipping_zones_converted' => $shippingZones,
                     'completed_at' => now(),
                 ])->save();
             });
@@ -309,6 +346,7 @@ class StoreCurrencyService
                 'products_converted' => $conversion->products_converted,
                 'variants_converted' => $conversion->variants_converted,
                 'bundles_converted' => $conversion->bundles_converted,
+                'shipping_zones_converted' => $conversion->shipping_zones_converted,
                 'failure_reason' => $conversion->failure_reason,
                 'completed_at' => $conversion->completed_at?->toIso8601String(),
                 'created_at' => $conversion->created_at?->toIso8601String(),
@@ -339,6 +377,11 @@ class StoreCurrencyService
         return Bundle::query()
             ->where('store_id', $store->getKey())
             ->where('discount_type', BundleDiscountType::Fixed);
+    }
+
+    private function shippingZonesQuery(Store $store): Builder
+    {
+        return ShippingZone::query()->where('store_id', $store->getKey());
     }
 
     private function convertAmount(float $amount, float $rate, string $target): float

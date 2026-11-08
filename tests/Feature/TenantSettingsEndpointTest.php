@@ -65,21 +65,37 @@ class TenantSettingsEndpointTest extends TestCase
                 'name' => 'The Urban Basket Co.',
                 'contact_email' => 'hello@urban-basket.test',
                 'phone' => '+9715511223344',
-                'currency' => 'AED',
                 'timezone' => 'Asia/Dubai',
                 'locale' => 'ar',
             ])
             ->assertOk()
             ->assertJsonPath('data.name', 'The Urban Basket Co.')
             ->assertJsonPath('data.contact_email', 'hello@urban-basket.test')
-            ->assertJsonPath('data.currency', 'AED')
+            ->assertJsonPath('data.currency', $this->tenant->currency)
             ->assertJsonPath('data.timezone', 'Asia/Dubai')
             ->assertJsonPath('data.locale', 'ar');
 
         $tenant = $this->tenant->fresh();
         $this->assertSame('The Urban Basket Co.', $tenant->name);
-        $this->assertSame('AED', $tenant->currency);
         $this->assertSame('ar', $tenant->locale);
+    }
+
+    public function test_the_workspace_currency_cannot_be_changed_through_settings(): void
+    {
+        $this->actingInTenant($this->merchant)
+            ->patchJson('/api/v1/tenant/settings', ['currency' => 'AED'])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'currency_requires_conversion');
+
+        $this->assertSame('USD', $this->tenant->fresh()->currency);
+    }
+
+    public function test_resending_the_current_workspace_currency_is_harmless(): void
+    {
+        $this->actingInTenant($this->merchant)
+            ->patchJson('/api/v1/tenant/settings', ['currency' => $this->tenant->currency])
+            ->assertOk()
+            ->assertJsonPath('data.currency', $this->tenant->currency);
     }
 
     public function test_the_slug_is_immutable_even_when_requested(): void
@@ -121,7 +137,7 @@ class TenantSettingsEndpointTest extends TestCase
     public function test_updating_settings_lands_in_the_tenant_audit_trail(): void
     {
         $this->actingInTenant($this->merchant)
-            ->patchJson('/api/v1/tenant/settings', ['currency' => 'AED'])
+            ->patchJson('/api/v1/tenant/settings', ['name' => 'Renamed Workspace'])
             ->assertOk();
 
         $entry = AuditLog::query()
@@ -132,8 +148,8 @@ class TenantSettingsEndpointTest extends TestCase
 
         $this->assertNotNull($entry);
         $this->assertSame('updated', $entry->action->value);
-        $this->assertSame('USD', $entry->old_values['currency']);
-        $this->assertSame('AED', $entry->new_values['currency']);
+        $this->assertSame($this->tenant->name, $entry->old_values['name']);
+        $this->assertSame('Renamed Workspace', $entry->new_values['name']);
     }
 
     private function actingInTenant(User $user): static

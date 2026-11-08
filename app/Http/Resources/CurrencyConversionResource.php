@@ -32,6 +32,7 @@ class CurrencyConversionResource extends JsonResource
             'products_converted' => $this->products_converted,
             'variants_converted' => $this->variants_converted,
             'bundles_converted' => $this->bundles_converted,
+            'shipping_zones_converted' => $this->shipping_zones_converted,
             'failure_reason' => $this->failure_reason,
             'completed_at' => $this->completed_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),

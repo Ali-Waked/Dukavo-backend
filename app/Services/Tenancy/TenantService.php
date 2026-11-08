@@ -6,10 +6,12 @@ namespace App\Services\Tenancy;
 
 use App\Enums\StoreStatus;
 use App\Enums\TenantStatus;
+use App\Exceptions\BusinessRuleViolation;
 use App\Models\Role;
 use App\Models\Store;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\Currency\CurrencyCatalog;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\Notifications\NotificationEventCatalog as Events;
 use App\Services\Notifications\NotificationIntent;
@@ -33,6 +35,7 @@ class TenantService
         private readonly PermissionService $permissions,
         private readonly TenantContext $tenants,
         private readonly NotificationDispatcher $notifications,
+        private readonly CurrencyCatalog $currencies,
     ) {}
 
     /**
@@ -47,7 +50,7 @@ class TenantService
                 'status' => $attributes['status'] ?? TenantStatus::Active,
                 'contact_email' => $attributes['contact_email'] ?? null,
                 'phone' => $attributes['phone'] ?? null,
-                'currency' => $attributes['currency'] ?? 'USD',
+                'currency' => $attributes['currency'] ?? $this->currencies->default(),
                 'timezone' => $attributes['timezone'] ?? 'UTC',
                 'locale' => $attributes['locale'] ?? 'en',
                 'settings' => $attributes['settings'] ?? null,
@@ -124,7 +127,21 @@ class TenantService
      */
     public function updateWorkspaceSettings(Tenant $tenant, array $attributes): Tenant
     {
-        $editable = ['name', 'contact_email', 'phone', 'currency', 'timezone', 'locale'];
+        // A workspace's currency is inherited from its default store. Letting
+        // this endpoint change the column on its own would relabel every price
+        // without converting any of them, so a real change must go through the
+        // default store's currency conversion endpoint, which also synchronises
+        // this column. Re-sending the current value is harmless and allowed.
+        if (array_key_exists('currency', $attributes)
+            && strtoupper((string) $attributes['currency']) !== strtoupper((string) $tenant->currency)) {
+            throw BusinessRuleViolation::because(
+                'Use the default store currency conversion endpoint to change the workspace currency.',
+                ['currency' => $attributes['currency']],
+                'currency_requires_conversion',
+            );
+        }
+
+        $editable = ['name', 'contact_email', 'phone', 'timezone', 'locale'];
 
         $tenant->fill(array_intersect_key($attributes, array_flip($editable)))->save();
 
@@ -147,11 +164,16 @@ class TenantService
      */
     public function createDefaultStore(Tenant $tenant, ?string $name = null): Store
     {
+        $currency = $tenant->currency ?: $this->currencies->default();
+
         return $this->tenants->run($tenant, fn (): Store => $tenant->stores()->create([
             'name' => $name ?? $tenant->name,
             'slug' => 'default',
             'status' => StoreStatus::Active,
-            'currency' => $tenant->currency,
+            'currency' => $currency,
+            'currency_decimals' => $this->currencies->supports($currency)
+                ? $this->currencies->decimals($currency)
+                : 2,
             'timezone' => $tenant->timezone,
             'is_default' => true,
         ]));

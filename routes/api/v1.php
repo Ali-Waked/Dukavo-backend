@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\V1\Catalog\ProductController;
 use App\Http\Controllers\Api\V1\Catalog\ProductImageController;
 use App\Http\Controllers\Api\V1\ConversationController;
 use App\Http\Controllers\Api\V1\ConversationEventController;
+use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\CustomerCrmController;
 use App\Http\Controllers\Api\V1\CustomerMemoryController;
@@ -194,6 +195,13 @@ Route::prefix('public')->name('api.public.')->group(function (): void {
 Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
     Route::get('me', [AuthController::class, 'me'])->middleware('tenant.optional')->name('api.me');
     Route::get('permissions', [PermissionController::class, 'index'])->name('api.permissions.index');
+
+    /*
+     * Currency metadata for personal surfaces (profile settings, platform
+     * screens). It is not tenant-scoped: a user's preferred display currency is
+     * an account preference, not a workspace setting.
+     */
+    Route::get('currencies', [CurrencyController::class, 'index'])->name('api.currencies.index');
 
     /*
      * Profile: the signed-in user's own account. Authenticated and active, but

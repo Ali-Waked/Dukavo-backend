@@ -14,6 +14,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Store;
+use App\Services\Currency\CurrencyCatalog;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 
@@ -27,7 +28,12 @@ use Carbon\CarbonImmutable;
  */
 class DashboardService
 {
-    public function __construct(private readonly TenantContext $tenants) {}
+    private ?string $reportCurrency = null;
+
+    public function __construct(
+        private readonly TenantContext $tenants,
+        private readonly CurrencyCatalog $currencies,
+    ) {}
 
     /**
      * Headline cards for the dashboard.
@@ -46,7 +52,7 @@ class DashboardService
             'revenue_today' => $revenueToday['total'],
             'orders_today' => $revenueToday['count'],
             'average_order_value' => $revenueToday['count'] > 0
-                ? round($revenueToday['total'] / $revenueToday['count'], 2)
+                ? $this->money($revenueToday['total'] / $revenueToday['count'])
                 : 0.0,
             'revenue_month' => $revenueMonth['total'],
             'orders_month' => $revenueMonth['count'],
@@ -106,7 +112,7 @@ class DashboardService
 
             $series[] = [
                 'date' => $key,
-                'total' => round((float) ($totals[$key] ?? 0), 2),
+                'total' => $this->money((float) ($totals[$key] ?? 0)),
                 'orders' => (int) ($counts[$key] ?? 0),
             ];
         }
@@ -143,7 +149,7 @@ class DashboardService
                 'name' => (string) $item->getAttribute('name'),
                 'sku' => $item->getAttribute('sku'),
                 'units' => (int) $item->getAttribute('units'),
-                'revenue' => round((float) $item->getAttribute('revenue'), 2),
+                'revenue' => $this->money((float) $item->getAttribute('revenue')),
             ])
             ->all();
     }
@@ -207,8 +213,23 @@ class DashboardService
             ->first();
 
         return [
-            'total' => round((float) ($row->total ?? 0), 2),
+            'total' => $this->money((float) ($row->total ?? 0)),
             'count' => (int) ($row->orders ?? 0),
         ];
+    }
+
+    /** The tenant's own currency, resolved once per service instance. */
+    private function currency(): string
+    {
+        return $this->reportCurrency ??= $this->context()['currency'];
+    }
+
+    /** Round a monetary total to the minor unit of the report currency. */
+    private function money(float $value): float
+    {
+        $currency = $this->currency();
+        $decimals = $this->currencies->supports($currency) ? $this->currencies->decimals($currency) : 2;
+
+        return round($value, $decimals);
     }
 }

@@ -9,19 +9,25 @@ use InvalidArgumentException;
 /**
  * The supported ISO 4217 currencies, read from configuration.
  *
- * Nothing else in the application hardcodes a symbol or a minor-unit count:
- * validation, API responses, conversion rounding and the SPA all derive from
- * this one catalogue. A code that is not listed here cannot be selected or
- * persisted, which is what keeps "currency" from drifting into free text.
+ * Nothing else in the application hardcodes a symbol, a localized name or a
+ * minor-unit count: validation, API responses, conversion rounding and the SPA
+ * all derive from this one catalogue. A code that is not listed here cannot be
+ * selected or persisted, which is what keeps "currency" from drifting into free
+ * text.
+ *
+ * Each entry carries both languages so the same record can answer an English or
+ * Arabic request without a second lookup. The `name` and `symbol` fields of
+ * {@see self::meta()} are resolved for the requested language; the raw
+ * `name_en` / `name_ar` fields stay available for clients that cache both.
  */
 class CurrencyCatalog
 {
     /**
-     * @return array<string, array{name: string, symbol: string, decimals: int, locale: string}>
+     * @return array<string, array{name_en: string, name_ar: string, symbol: string, symbol_ar: string, decimals: int}>
      */
     public function all(): array
     {
-        /** @var array<string, array{name: string, symbol: string, decimals: int, locale: string}> $supported */
+        /** @var array<string, array{name_en: string, name_ar: string, symbol: string, symbol_ar: string, decimals: int}> $supported */
         $supported = (array) config('dukavo.currencies.supported', []);
 
         return $supported;
@@ -46,9 +52,21 @@ class CurrencyCatalog
     }
 
     /**
-     * @return array{code: string, name: string, symbol: string, decimals: int, locale: string}
+     * Everything the API needs to describe one currency in one language.
+     *
+     * @return array{
+     *     code: string,
+     *     name: string,
+     *     name_en: string,
+     *     name_ar: string,
+     *     symbol: string,
+     *     symbol_en: string,
+     *     symbol_ar: string,
+     *     decimals: int,
+     *     locale: string
+     * }
      */
-    public function meta(string $code): array
+    public function meta(string $code, ?string $locale = null): array
     {
         $code = strtoupper($code);
         $currency = $this->all()[$code] ?? null;
@@ -57,12 +75,35 @@ class CurrencyCatalog
             throw new InvalidArgumentException("Unsupported currency [{$code}].");
         }
 
-        return ['code' => $code] + $currency;
+        $locale = $this->normaliseLocale($locale);
+        $arabic = $locale === 'ar';
+
+        return [
+            'code' => $code,
+            'name' => $arabic ? $currency['name_ar'] : $currency['name_en'],
+            'name_en' => $currency['name_en'],
+            'name_ar' => $currency['name_ar'],
+            'symbol' => $arabic ? $currency['symbol_ar'] : $currency['symbol'],
+            'symbol_en' => $currency['symbol'],
+            'symbol_ar' => $currency['symbol_ar'],
+            'decimals' => $currency['decimals'],
+            'locale' => $locale,
+        ];
     }
 
     public function decimals(string $code): int
     {
         return $this->meta($code)['decimals'];
+    }
+
+    public function nameFor(string $code, ?string $locale = null): string
+    {
+        return $this->meta($code, $locale)['name'];
+    }
+
+    public function symbolFor(string $code, ?string $locale = null): string
+    {
+        return $this->meta($code, $locale)['symbol'];
     }
 
     /**
@@ -80,18 +121,40 @@ class CurrencyCatalog
     /**
      * The full list shaped for the SPA's currency selector.
      *
-     * @return list<array{code: string, name: string, symbol: string, decimals: int, locale: string}>
+     * @return list<array{
+     *     code: string,
+     *     name: string,
+     *     name_en: string,
+     *     name_ar: string,
+     *     symbol: string,
+     *     symbol_en: string,
+     *     symbol_ar: string,
+     *     decimals: int,
+     *     locale: string
+     * }>
      */
-    public function options(): array
+    public function options(?string $locale = null): array
     {
+        $locale = $this->normaliseLocale($locale);
         $options = [];
 
-        foreach ($this->all() as $code => $currency) {
-            $options[] = ['code' => $code] + $currency;
+        foreach (array_keys($this->all()) as $code) {
+            $options[] = $this->meta($code, $locale);
         }
 
         usort($options, fn (array $a, array $b): int => strcmp($a['code'], $b['code']));
 
         return $options;
+    }
+
+    /**
+     * Only the platform's two published languages are meaningful here; anything
+     * else degrades to English rather than returning an empty name.
+     */
+    private function normaliseLocale(?string $locale): string
+    {
+        $locale = strtolower(trim((string) $locale));
+
+        return str_starts_with($locale, 'ar') ? 'ar' : 'en';
     }
 }

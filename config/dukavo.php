@@ -85,41 +85,19 @@ return [
     | The supported ISO 4217 currencies and everything the UI needs to present
     | them. A store owns exactly one base currency; products and inventory are
     | priced in it. `decimals` is the minor-unit precision used for storage and
-    | formatting (JPY has none, the Gulf dinars have three). `locale` only
-    | guides `Intl.NumberFormat` on the client and never changes stored data.
+    | formatting (JPY has none, the Gulf dinars have three).
     |
-    | Adding a currency here is the only way to make it selectable: validation
-    | and the currency API both read this list, so an unknown code cannot be
-    | persisted.
+    | The catalogue itself lives in `config/currencies.php`, generated from
+    | official ISO 4217 minor units and ICU/CLDR names and symbols. Adding a
+    | currency there is the only way to make it selectable: validation and the
+    | currency API both read this list, so an unknown code cannot be persisted.
     |
     */
 
     'currencies' => [
-        'default' => 'USD',
+        'default' => env('DUKAVO_DEFAULT_CURRENCY', 'USD'),
 
-        'supported' => [
-            'USD' => ['name' => 'US Dollar', 'symbol' => '$', 'decimals' => 2, 'locale' => 'en_US'],
-            'EUR' => ['name' => 'Euro', 'symbol' => '€', 'decimals' => 2, 'locale' => 'de_DE'],
-            'GBP' => ['name' => 'British Pound', 'symbol' => '£', 'decimals' => 2, 'locale' => 'en_GB'],
-            'SAR' => ['name' => 'Saudi Riyal', 'symbol' => 'ر.س', 'decimals' => 2, 'locale' => 'ar_SA'],
-            'AED' => ['name' => 'UAE Dirham', 'symbol' => 'د.إ', 'decimals' => 2, 'locale' => 'ar_AE'],
-            'EGP' => ['name' => 'Egyptian Pound', 'symbol' => 'ج.م', 'decimals' => 2, 'locale' => 'ar_EG'],
-            'KWD' => ['name' => 'Kuwaiti Dinar', 'symbol' => 'د.ك', 'decimals' => 3, 'locale' => 'ar_KW'],
-            'QAR' => ['name' => 'Qatari Riyal', 'symbol' => 'ر.ق', 'decimals' => 2, 'locale' => 'ar_QA'],
-            'BHD' => ['name' => 'Bahraini Dinar', 'symbol' => 'د.ب', 'decimals' => 3, 'locale' => 'ar_BH'],
-            'OMR' => ['name' => 'Omani Rial', 'symbol' => 'ر.ع.', 'decimals' => 3, 'locale' => 'ar_OM'],
-            'JOD' => ['name' => 'Jordanian Dinar', 'symbol' => 'د.أ', 'decimals' => 3, 'locale' => 'ar_JO'],
-            'MAD' => ['name' => 'Moroccan Dirham', 'symbol' => 'د.م.', 'decimals' => 2, 'locale' => 'ar_MA'],
-            'TRY' => ['name' => 'Turkish Lira', 'symbol' => '₺', 'decimals' => 2, 'locale' => 'tr_TR'],
-            'INR' => ['name' => 'Indian Rupee', 'symbol' => '₹', 'decimals' => 2, 'locale' => 'en_IN'],
-            'CAD' => ['name' => 'Canadian Dollar', 'symbol' => 'CA$', 'decimals' => 2, 'locale' => 'en_CA'],
-            'AUD' => ['name' => 'Australian Dollar', 'symbol' => 'A$', 'decimals' => 2, 'locale' => 'en_AU'],
-            'JPY' => ['name' => 'Japanese Yen', 'symbol' => '¥', 'decimals' => 0, 'locale' => 'ja_JP'],
-            'CNY' => ['name' => 'Chinese Yuan', 'symbol' => 'CN¥', 'decimals' => 2, 'locale' => 'zh_CN'],
-            'NGN' => ['name' => 'Nigerian Naira', 'symbol' => '₦', 'decimals' => 2, 'locale' => 'en_NG'],
-            'ZAR' => ['name' => 'South African Rand', 'symbol' => 'R', 'decimals' => 2, 'locale' => 'en_ZA'],
-            'KES' => ['name' => 'Kenyan Shilling', 'symbol' => 'KSh', 'decimals' => 2, 'locale' => 'en_KE'],
-        ],
+        'supported' => require __DIR__.'/currencies.php',
     ],
 
     /*

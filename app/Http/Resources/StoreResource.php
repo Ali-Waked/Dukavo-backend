@@ -22,7 +22,7 @@ class StoreResource extends JsonResource
     {
         $catalog = app(CurrencyCatalog::class);
         $locale = PreferredLocale::from($request);
-        $currency = $catalog->supports($this->currency) ? $catalog->meta((string) $this->currency) : null;
+        $currency = $catalog->supports($this->currency) ? $catalog->meta((string) $this->currency, $locale) : null;
 
         return [
             'id' => $this->id,
@@ -41,7 +41,11 @@ class StoreResource extends JsonResource
             'phone' => $this->phone,
             'currency' => $this->currency,
             'currency_name' => $currency['name'] ?? null,
+            'currency_name_en' => $currency['name_en'] ?? null,
+            'currency_name_ar' => $currency['name_ar'] ?? null,
             'currency_symbol' => $currency['symbol'] ?? null,
+            'currency_symbol_en' => $currency['symbol_en'] ?? null,
+            'currency_symbol_ar' => $currency['symbol_ar'] ?? null,
             'currency_decimals' => $this->currency_decimals ?? $currency['decimals'] ?? 2,
             'currency_updated_at' => $this->currency_updated_at?->toIso8601String(),
             'timezone' => $this->timezone,

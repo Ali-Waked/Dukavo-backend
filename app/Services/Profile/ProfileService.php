@@ -38,11 +38,11 @@ class ProfileService
      */
     public function update(User $user, array $attributes): User
     {
-        $before = $user->only(['name', 'phone', 'locale']);
+        $before = $user->only(['name', 'phone', 'locale', 'preferred_currency']);
 
         $user->fill($attributes)->save();
 
-        $this->audit->recordChanges(AuditAction::Updated, $user, $before, $user->only(['name', 'phone', 'locale']), actor: $user);
+        $this->audit->recordChanges(AuditAction::Updated, $user, $before, $user->only(['name', 'phone', 'locale', 'preferred_currency']), actor: $user);
 
         return $user;
     }

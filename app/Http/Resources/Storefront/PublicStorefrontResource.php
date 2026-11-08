@@ -22,8 +22,8 @@ class PublicStorefrontResource extends JsonResource
     public function toArray(Request $request): array
     {
         $catalog = app(CurrencyCatalog::class);
-        $currency = $catalog->supports($this->currency) ? $catalog->meta((string) $this->currency) : null;
         $locale = PreferredLocale::from($request);
+        $currency = $catalog->supports($this->currency) ? $catalog->meta((string) $this->currency, $locale) : null;
 
         return [
             'name' => $this->resource->localizedName($locale),
@@ -34,6 +34,7 @@ class PublicStorefrontResource extends JsonResource
             'email' => $this->email,
             'phone' => $this->phone,
             'currency' => $this->currency,
+            'currency_name' => $currency['name'] ?? null,
             'currency_symbol' => $currency['symbol'] ?? null,
             'currency_decimals' => $this->currency_decimals ?? $currency['decimals'] ?? 2,
             'timezone' => $this->timezone,

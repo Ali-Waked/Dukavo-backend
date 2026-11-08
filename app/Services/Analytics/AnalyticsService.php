@@ -14,6 +14,7 @@ use App\Models\Inventory;
 use App\Models\Order;
 use App\Models\RecoveryOpportunity;
 use App\Models\Store;
+use App\Services\Currency\CurrencyCatalog;
 use App\Services\Reporting\ProfitIntelligenceService;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -35,6 +36,7 @@ class AnalyticsService
     public function __construct(
         private readonly TenantContext $tenants,
         private readonly ProfitIntelligenceService $profit,
+        private readonly CurrencyCatalog $currencies,
     ) {}
 
     /**
@@ -557,8 +559,8 @@ class AnalyticsService
                 'dismissed' => $dismissed,
                 'expired' => $expired,
             ],
-            'open_pipeline_value' => round($openPipeline, 2),
-            'recovered_revenue' => round($recoveredRevenue, 2),
+            'open_pipeline_value' => $this->money($openPipeline, $currency),
+            'recovered_revenue' => $this->money($recoveredRevenue, $currency),
             'conversion_rate_percent' => $total > 0 ? round(($recovered / $total) * 100, 2) : 0.0,
         ];
     }
@@ -689,5 +691,13 @@ class AnalyticsService
         return $count % 2 === 1
             ? (float) $values[$middle]
             : round(($values[$middle - 1] + $values[$middle]) / 2, 2);
+    }
+
+    /** Round a monetary total to the minor unit of the currency it is in. */
+    private function money(float $value, string $currency): float
+    {
+        $decimals = $this->currencies->supports($currency) ? $this->currencies->decimals($currency) : 2;
+
+        return round($value, $decimals);
     }
 }

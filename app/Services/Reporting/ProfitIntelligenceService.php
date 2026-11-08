@@ -9,6 +9,7 @@ use App\Enums\PaymentStatus;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Store;
+use App\Services\Currency\CurrencyCatalog;
 use App\Services\Currency\StoreCurrencyService;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -31,9 +32,17 @@ use Illuminate\Support\Collection;
  */
 class ProfitIntelligenceService
 {
+    /**
+     * The currency the current report is expressed in. Every `money()` call
+     * inside one `overview()` belongs to this currency, so rounding uses its
+     * own minor unit rather than a blanket two decimals.
+     */
+    private string $reportCurrency = 'USD';
+
     public function __construct(
         private readonly TenantContext $tenants,
         private readonly StoreCurrencyService $currencies,
+        private readonly CurrencyCatalog $catalog,
     ) {}
 
     /**
@@ -129,6 +138,8 @@ class ProfitIntelligenceService
         CarbonImmutable $from,
         CarbonImmutable $until,
     ): array {
+        $currency = strtoupper($currency);
+        $this->reportCurrency = $currency;
         $context = $this->context($currency);
         [$utcFrom, $utcUntil] = $this->utcBounds($from, $until, $context['timezone']);
         $rates = $this->reportingRates($currency, $utcFrom, $utcUntil);
@@ -770,7 +781,11 @@ class ProfitIntelligenceService
 
     private function money(float|int|string|null $value): float
     {
-        return round((float) $value, 2);
+        $decimals = $this->catalog->supports($this->reportCurrency)
+            ? $this->catalog->decimals($this->reportCurrency)
+            : 2;
+
+        return round((float) $value, $decimals);
     }
 
     private function rate(int|float $part, int|float $total): ?float

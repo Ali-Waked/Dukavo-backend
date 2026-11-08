@@ -145,6 +145,16 @@ class StoreService
             $store->forceFill(['is_default' => true])->save();
             $this->demoteOthers($store);
 
+            // The workspace currency follows its default store; promoting a
+            // store in another currency therefore relabels the workspace too.
+            // Current prices in the new default store are already in its own
+            // currency, so no conversion is performed here.
+            Tenant::query()
+                ->whereKey($store->tenant_id)
+                ->first()
+                ?->forceFill(['currency' => strtoupper((string) $store->currency)])
+                ->save();
+
             return $store;
         });
     }

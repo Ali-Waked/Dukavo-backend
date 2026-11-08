@@ -7,9 +7,11 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TenantResource;
 use App\Models\User;
+use App\Services\Currency\CurrencyCatalog;
 use App\Services\Rbac\PermissionService;
 use App\Support\ApiResponse;
 use App\Support\PermissionRegistry;
+use App\Support\PreferredLocale;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +32,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly PermissionService $permissions,
         private readonly TenantContext $tenants,
+        private readonly CurrencyCatalog $currencies,
     ) {}
 
     public function me(Request $request): JsonResponse
@@ -38,6 +41,14 @@ class AuthController extends Controller
         $user->loadMissing('platformRoles.permissions');
 
         $tenants = $user->tenants()->orderBy('tenants.name')->get();
+        $locale = PreferredLocale::from($request);
+        $preferredCurrency = strtoupper((string) ($user->preferred_currency ?? $this->currencies->default()));
+
+        if (! $this->currencies->supports($preferredCurrency)) {
+            $preferredCurrency = $this->currencies->default();
+        }
+
+        $currency = $this->currencies->meta($preferredCurrency, $locale);
 
         return response()->json([
             'success' => true,
@@ -48,6 +59,12 @@ class AuthController extends Controller
                     'email' => $user->email,
                     'phone' => $user->phone,
                     'locale' => $user->locale,
+                    'preferred_currency' => $currency['code'],
+                    'preferred_currency_name' => $currency['name'],
+                    'preferred_currency_name_en' => $currency['name_en'],
+                    'preferred_currency_name_ar' => $currency['name_ar'],
+                    'preferred_currency_symbol' => $currency['symbol'],
+                    'preferred_currency_decimals' => $currency['decimals'],
                     'status' => $user->status->value,
                     'avatar_url' => $user->avatarUrl(),
                     'email_verified_at' => $user->email_verified_at?->toIso8601String(),

@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Model;
     'products_converted',
     'variants_converted',
     'bundles_converted',
+    'shipping_zones_converted',
     'idempotency_key',
     'requested_by',
     'failure_reason',
@@ -46,6 +47,7 @@ class CurrencyConversion extends Model
             'products_converted' => 'integer',
             'variants_converted' => 'integer',
             'bundles_converted' => 'integer',
+            'shipping_zones_converted' => 'integer',
         ];
     }
 }

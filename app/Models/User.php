@@ -31,7 +31,7 @@ use Laravel\Sanctum\HasApiTokens;
  * through `user_roles` with a tenant id, never through a single `role_id`
  * column on this table.
  */
-#[Fillable(['name', 'email', 'phone', 'password', 'status', 'locale', 'avatar_path', 'notification_preferences'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'status', 'locale', 'preferred_currency', 'avatar_path', 'notification_preferences'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail
 {

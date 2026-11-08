@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
+use App\Models\Product;
+use App\Models\Store;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\Profile\ProfileService;
@@ -94,6 +96,86 @@ class ProfileSettingsTest extends TestCase
             ->patchJson('/api/v1/profile', ['locale' => 'xx'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('locale');
+    }
+
+    public function test_the_profile_exposes_the_personal_currency_and_its_metadata(): void
+    {
+        $this->login()
+            ->getJson('/api/v1/profile')
+            ->assertOk()
+            ->assertJsonPath('data.preferred_currency', 'USD')
+            ->assertJsonPath('data.preferred_currency_name', 'US Dollar')
+            ->assertJsonPath('data.preferred_currency_symbol', '$')
+            ->assertJsonPath('data.preferred_currency_decimals', 2);
+    }
+
+    public function test_the_preferred_currency_persists_without_touching_the_workspace(): void
+    {
+        $store = Store::query()->withoutGlobalScopes()->where('tenant_id', $this->tenant->getKey())->firstOrFail();
+        $product = $this->withinTenant($this->tenant, fn () => Product::factory()->create([
+            'tenant_id' => $this->tenant->getKey(),
+            'store_id' => $store->getKey(),
+            'price' => 100,
+            'cost' => 40,
+            'currency' => 'USD',
+        ]));
+
+        $this->login()
+            ->patchJson('/api/v1/profile', ['preferred_currency' => 'KWD'])
+            ->assertOk()
+            ->assertJsonPath('data.preferred_currency', 'KWD')
+            ->assertJsonPath('data.preferred_currency_name', 'Kuwaiti Dinar')
+            ->assertJsonPath('data.preferred_currency_decimals', 3);
+
+        $user = $this->user->fresh();
+        $this->assertSame('KWD', $user->preferred_currency);
+
+        // A personal preference is display-only: the workspace, its store and
+        // every price keep their own currency.
+        $this->assertSame('USD', $this->tenant->fresh()->currency);
+        $this->assertSame('USD', $store->fresh()->currency);
+        $this->assertSame('USD', $product->fresh()->currency);
+        $this->assertSame(100.0, (float) $product->fresh()->price);
+    }
+
+    public function test_the_preferred_currency_is_localised_for_arabic(): void
+    {
+        $this->user->forceFill(['preferred_currency' => 'AED'])->save();
+
+        $response = $this->login()
+            ->getJson('/api/v1/profile?locale=ar')
+            ->assertOk()
+            ->assertJsonPath('data.preferred_currency', 'AED');
+
+        $this->assertSame('درهم إماراتي', $response->json('data.preferred_currency_name'));
+        $this->assertSame('United Arab Emirates Dirham', $response->json('data.preferred_currency_name_en'));
+    }
+
+    public function test_an_unsupported_preferred_currency_is_rejected(): void
+    {
+        $this->login()
+            ->patchJson('/api/v1/profile', ['preferred_currency' => 'XYZ'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('preferred_currency');
+
+        $this->assertSame('USD', $this->user->fresh()->preferred_currency);
+    }
+
+    public function test_changing_the_preferred_currency_is_audited(): void
+    {
+        $this->login()
+            ->patchJson('/api/v1/profile', ['preferred_currency' => 'EUR'])
+            ->assertOk();
+
+        $entry = AuditLog::query()
+            ->where('auditable_type', $this->user->getMorphClass())
+            ->where('auditable_id', $this->user->getKey())
+            ->orderByDesc('id')
+            ->first();
+
+        $this->assertNotNull($entry);
+        $this->assertSame('USD', $entry->old_values['preferred_currency']);
+        $this->assertSame('EUR', $entry->new_values['preferred_currency']);
     }
 
     public function test_the_avatar_can_be_uploaded_and_removed(): void

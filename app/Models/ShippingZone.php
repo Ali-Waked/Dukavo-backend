@@ -42,8 +42,8 @@ class ShippingZone extends Model
     {
         return [
             'areas' => 'array',
-            'fee' => 'decimal:2',
-            'free_shipping_threshold' => 'decimal:2',
+            'fee' => 'decimal:4',
+            'free_shipping_threshold' => 'decimal:4',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
         ];

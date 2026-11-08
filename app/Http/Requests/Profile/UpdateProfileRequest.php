@@ -33,6 +33,7 @@ class UpdateProfileRequest extends ApiRequest
             'name' => ['sometimes', 'string', 'min:1', 'max:120'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:32'],
             'locale' => ['sometimes', 'string', Rule::in(config('dukavo.locales.supported'))],
+            'preferred_currency' => ['sometimes', 'string', 'size:3', 'uppercase', Rule::in(array_keys((array) config('dukavo.currencies.supported', [])))],
         ];
     }
 }
