@@ -23,9 +23,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * view can show activity without revealing an address.
  */
 #[Fillable([
-    'notification_id', 'event_key', 'channel', 'recipient_type', 'recipient_id',
-    'recipient_ref', 'status', 'attempts', 'provider_message_id', 'error',
-    'queued_at', 'sent_at', 'delivered_at', 'failed_at',
+    'notification_id', 'event_key', 'dedupe_key', 'template', 'payload', 'channel', 'recipient_type', 'recipient_id',
+    'recipient_ref', 'status', 'attempts', 'provider_message_id', 'provider_payload', 'error',
+    'failure_type', 'queued_at', 'sent_at', 'delivered_at', 'failed_at',
 ])]
 class NotificationDelivery extends Model
 {
@@ -38,6 +38,8 @@ class NotificationDelivery extends Model
             'channel' => NotificationChannel::class,
             'status' => NotificationDeliveryStatus::class,
             'attempts' => 'integer',
+            'payload' => 'array',
+            'provider_payload' => 'array',
             'queued_at' => 'datetime',
             'sent_at' => 'datetime',
             'delivered_at' => 'datetime',
@@ -72,21 +74,50 @@ class NotificationDelivery extends Model
         ])->save();
     }
 
-    public function markDelivered(): void
+    public function markDelivered(?array $payload = null): void
     {
         $this->forceFill([
             'status' => NotificationDeliveryStatus::Delivered,
             'delivered_at' => now(),
+            'provider_payload' => $payload ?? $this->provider_payload,
         ])->save();
     }
 
-    public function markFailed(string $error): void
+    /**
+     * Record a failure, classified so a caller knows whether a retry is
+     * meaningful. A provider's transient "try again" and a permanent recipient
+     * rejection must not look the same in the audit trail.
+     */
+    public function markFailed(string $error, ?string $failureType = null, ?array $payload = null): void
     {
         $this->forceFill([
             'status' => NotificationDeliveryStatus::Failed,
             'error' => $error,
+            'failure_type' => $failureType ?? $this->failure_type,
+            'provider_payload' => $payload ?? $this->provider_payload,
             'failed_at' => now(),
         ])->save();
+    }
+
+    /**
+     * A provider callback reporting a bounce, complaint or rejection. Unlike a
+     * transport exception this arrives after the message was accepted, so it
+     * always moves the row to failed.
+     */
+    public function markProviderFailure(string $reason, bool $permanent, ?array $payload = null): void
+    {
+        $this->forceFill([
+            'status' => NotificationDeliveryStatus::Failed,
+            'error' => $reason,
+            'failure_type' => $permanent ? 'permanent' : 'temporary',
+            'provider_payload' => $payload ?? $this->provider_payload,
+            'failed_at' => now(),
+        ])->save();
+    }
+
+    public function isPermanentFailure(): bool
+    {
+        return $this->failure_type === 'permanent';
     }
 
     /**

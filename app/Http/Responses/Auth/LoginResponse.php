@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Responses\Auth;
 
 use App\Models\User;
+use App\Services\Emails\AccountEmailService;
 use App\Support\Auth\DeviceName;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,11 +32,29 @@ class LoginResponse implements LoginResponseContract
         $user = $request->user();
 
         // Naming the token after the device is what makes the "signed-in
-        // devices" list on the security screen readable.
-        $token = $user instanceof User ? $user->createToken(DeviceName::for($request))->plainTextToken : null;
+        // devices" list on the security screen readable. Checking for an
+        // existing token with that name before minting a new one is what makes
+        // the new-device warning meaningful rather than routine.
+        $device = DeviceName::for($request);
+        $isNewDevice = $user instanceof User && ! $user->tokens()->where('name', $device)->exists();
+
+        $token = $user instanceof User ? $user->createToken($device)->plainTextToken : null;
 
         if ($user instanceof User) {
             $user->forceFill(['last_login_at' => now()])->save();
+
+            if ($isNewDevice) {
+                app(AccountEmailService::class)->send(
+                    user: $user,
+                    template: 'new_device',
+                    data: [
+                        'device' => $device,
+                        'time' => now()->format('Y-m-d H:i'),
+                        'ip_address' => (string) $request->ip(),
+                    ],
+                    actionUrl: '/settings/security',
+                );
+            }
         }
 
         return new JsonResponse([

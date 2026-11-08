@@ -8,8 +8,10 @@ use App\Enums\UserStatus;
 use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\Emails\AccountEmailService;
 use App\Services\Tenancy\TenantService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 
 /**
@@ -21,7 +23,10 @@ use Illuminate\Support\Str;
  */
 class UserService
 {
-    public function __construct(private readonly TenantService $tenants) {}
+    public function __construct(
+        private readonly TenantService $tenants,
+        private readonly AccountEmailService $accountEmails,
+    ) {}
 
     /**
      * Create a user inside a tenant with a tenant scoped role.
@@ -44,8 +49,44 @@ class UserService
 
             $this->tenants->addUser($tenant, $user, $role, (bool) ($attributes['is_owner'] ?? false));
 
+            $this->sendInvitation($user, $tenant, $role, $attributes['inviter'] ?? null);
+
             return $user;
         });
+    }
+
+    /**
+     * Email an invitation that lets the new member set their own password.
+     *
+     * A broker token is generated here rather than reusing the temporary
+     * password: the recipient never sees a password in an email, and the token
+     * is the same one the reset endpoint already validates.
+     */
+    private function sendInvitation(User $user, Tenant $tenant, Role $role, ?string $inviter): void
+    {
+        $minutes = (int) config('auth.passwords.users.expire', 60);
+        $token = Password::broker()->createToken($user);
+        $inviterName = $inviter ?? auth()->user()?->name ?? (string) config('dukavo.name', 'Dukavo');
+
+        $url = rtrim((string) config('dukavo.urls.frontend'), '/')
+            .'/reset-password?'.http_build_query([
+                'token' => $token,
+                'email' => $user->email,
+            ]);
+
+        $this->accountEmails->send(
+            user: $user,
+            template: 'invitation',
+            data: [
+                'tenant' => $tenant->name,
+                'role' => $role->name,
+                'inviter' => $inviterName,
+                'minutes' => $minutes,
+                'expires' => now()->addMinutes($minutes)->format('Y-m-d H:i'),
+            ],
+            actionUrl: $url,
+            dedupeKey: 'account.invitation:'.$user->getKey().':'.$tenant->getKey(),
+        );
     }
 
     /**
@@ -69,6 +110,14 @@ class UserService
                 'role_id' => $role->getKey(),
                 'tenant_id' => null,
             ]);
+
+            $this->accountEmails->send(
+                user: $user,
+                template: 'welcome',
+                data: ['role' => $role->name],
+                actionUrl: '/login',
+                dedupeKey: 'account.welcome:'.$user->getKey(),
+            );
 
             return $user;
         });

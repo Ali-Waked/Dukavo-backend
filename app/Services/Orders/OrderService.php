@@ -126,6 +126,7 @@ class OrderService
             tenantId: (int) $order->tenant_id,
             dedupeKey: 'tenant.order.created:'.$order->getKey(),
             data: [
+                'order_id' => $order->getKey(),
                 'order_number' => $order->order_number,
                 'customer' => $order->customer_name ?: 'A customer',
                 'total' => $this->formatMoney($order->grand_total, $order->currency),
@@ -485,13 +486,24 @@ class OrderService
             $this->inventory->evaluateLowStockForOrder($order);
         }
 
+        $eventKey = match ($status) {
+            OrderStatus::Shipped => Events::TENANT_ORDER_SHIPPED,
+            OrderStatus::Delivered => Events::TENANT_ORDER_DELIVERED,
+            OrderStatus::Cancelled => Events::TENANT_ORDER_CANCELLED,
+            default => Events::TENANT_ORDER_STATUS_CHANGED,
+        };
+
         $this->notifications->dispatch(new NotificationIntent(
-            eventKey: Events::TENANT_ORDER_STATUS_CHANGED,
+            eventKey: $eventKey,
             tenantId: (int) $order->tenant_id,
-            dedupeKey: 'tenant.order.status_changed:'.$order->getKey().':'.$status->value,
+            dedupeKey: $eventKey.':'.$order->getKey().':'.$status->value,
             data: [
+                'order_id' => $order->getKey(),
                 'order_number' => $order->order_number,
+                'customer' => $order->customer_name ?: 'A customer',
+                'total' => $this->formatMoney($order->grand_total, $order->currency),
                 'status' => $status->label(),
+                'status_value' => $status->value,
                 'from' => $from->label(),
                 'to' => $status->label(),
             ],
@@ -508,15 +520,62 @@ class OrderService
     }
 
     /**
-     * Record a payment against an order. Only the transition unpaid → paid is
-     * meaningful here; refunds are handled by the payment ledger in a future
-     * iteration of the billing module.
+     * Record a payment against an order.
+     *
+     * Only the transition into `paid` is announced: calling this again on an
+     * already-paid order is a no-op, so a retried request cannot send a second
+     * receipt.
      */
     public function markPaid(Order $order): Order
     {
+        if ($order->payment_status === PaymentStatus::Paid) {
+            return $order;
+        }
+
         $order->forceFill(['payment_status' => PaymentStatus::Paid])->save();
 
+        $this->announcePaymentStatus($order, Events::TENANT_ORDER_PAID, 'paid');
+
         return $order;
+    }
+
+    /**
+     * Record that the order's payment was refunded.
+     *
+     * Dukavo has no separate refund ledger, so this sets the payment status and
+     * announces it; it does not invent a refund amount or reverse the order.
+     */
+    public function markRefunded(Order $order): Order
+    {
+        if ($order->payment_status === PaymentStatus::Refunded) {
+            return $order;
+        }
+
+        $order->forceFill(['payment_status' => PaymentStatus::Refunded])->save();
+
+        $this->announcePaymentStatus($order, Events::TENANT_ORDER_REFUNDED, 'refunded');
+
+        return $order;
+    }
+
+    private function announcePaymentStatus(Order $order, string $eventKey, string $state): void
+    {
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: $eventKey,
+            tenantId: (int) $order->tenant_id,
+            dedupeKey: $eventKey.':'.$order->getKey().':'.$state,
+            data: [
+                'order_id' => $order->getKey(),
+                'order_number' => $order->order_number,
+                'customer' => $order->customer_name ?: 'A customer',
+                'total' => $this->formatMoney($order->grand_total, $order->currency),
+                'status_value' => $order->status->value,
+                'status' => $order->status->label(),
+            ],
+            actionUrl: '/orders/'.$order->order_number,
+            actorId: auth()->id(),
+            severity: $state === 'paid' ? NotificationSeverity::Success : NotificationSeverity::Warning,
+        ));
     }
 
     /**

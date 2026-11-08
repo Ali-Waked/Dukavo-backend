@@ -10,6 +10,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\Emails\AccountEmailService;
 use App\Support\PermissionRegistry;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -32,7 +33,10 @@ use Illuminate\Support\Str;
  */
 class RoleService
 {
-    public function __construct(private readonly PermissionService $permissions) {}
+    public function __construct(
+        private readonly PermissionService $permissions,
+        private readonly AccountEmailService $accountEmails,
+    ) {}
 
     /**
      * @param  array<int, string>  $permissionSlugs
@@ -211,12 +215,16 @@ class RoleService
             }
         }
 
-        $user->roleAssignments()->updateOrCreate(
+        $assignment = $user->roleAssignments()->updateOrCreate(
             ['role_id' => $role->getKey(), 'tenant_id' => $tenant?->getKey()],
             [],
         );
 
         $this->permissions->flush($user);
+
+        if ($assignment->wasRecentlyCreated) {
+            $this->announceRoleChange($user, $role, $tenant, granted: true);
+        }
     }
 
     /**
@@ -226,9 +234,41 @@ class RoleService
     {
         $tenantId = $role->scope === RoleScope::Platform ? null : $tenant?->getKey();
 
+        $existed = $user->roleAssignments()
+            ->where('role_id', $role->getKey())
+            ->where(fn ($query) => $tenantId === null
+                ? $query->whereNull('tenant_id')
+                : $query->where('tenant_id', $tenantId))
+            ->exists();
+
         $user->revokeRole($role->getKey(), $tenantId);
 
+        if ($existed) {
+            $this->announceRoleChange($user, $role, $tenant, granted: false);
+        }
+
         return ['role' => $role->slug, 'tenant_id' => $tenantId];
+    }
+
+    /**
+     * Tell someone their access changed.
+     *
+     * A role change is a security-relevant fact: it is sent even when every
+     * optional notification switch is off, and it names the workspace so a
+     * platform grant is not mistaken for a tenant one.
+     */
+    private function announceRoleChange(User $user, Role $role, ?Tenant $tenant, bool $granted): void
+    {
+        $this->accountEmails->send(
+            user: $user,
+            template: 'role_changed',
+            data: [
+                'role' => $role->name,
+                'tenant' => $tenant?->name ?? (string) config('dukavo.name', 'Dukavo'),
+                'granted' => $granted ? '1' : '0',
+            ],
+            actionUrl: '/dashboard',
+        );
     }
 
     private function uniqueSlug(string $name): string

@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Enums\NotificationChannel;
 use App\Enums\NotificationDeliveryStatus;
 use App\Models\NotificationDelivery;
+use App\Services\Emails\EmailFailureClassifier;
 use App\Services\Notifications\Senders\EmailNotificationSender;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -19,9 +20,11 @@ use Throwable;
  * reads the current state of the row. It refuses to touch a delivery that is
  * already terminal, which makes a duplicated queue entry harmless.
  *
- * A transport failure marks the delivery `failed` and rethrows so the queue can
- * retry; once the tries are exhausted the delivery stays failed rather than
- * silently succeeding.
+ * A temporary transport failure marks the delivery `failed`, records why, and
+ * rethrows so the queue can retry with backoff. A permanent failure — a rejected
+ * recipient, a blocked message — is recorded once and *not* retried, because the
+ * second attempt would fail identically. Once retries are exhausted the delivery
+ * stays failed and the exception is reported rather than silently swallowed.
  */
 final class SendNotificationEmail implements ShouldQueue
 {
@@ -39,7 +42,7 @@ final class SendNotificationEmail implements ShouldQueue
         $this->onQueue(NotificationChannel::Mail->queue());
     }
 
-    public function handle(EmailNotificationSender $sender): void
+    public function handle(EmailNotificationSender $sender, EmailFailureClassifier $classifier): void
     {
         $delivery = NotificationDelivery::query()->with('notification')->find($this->deliveryId);
 
@@ -55,13 +58,17 @@ final class SendNotificationEmail implements ShouldQueue
         try {
             $sender->send($delivery);
         } catch (Throwable $exception) {
-            $delivery->markFailed($exception->getMessage());
+            $type = $classifier->classify($exception);
 
-            if ($this->attempts() < $this->tries) {
-                throw $exception;
+            $delivery->markFailed($classifier->reason($exception), $type);
+
+            if ($type === EmailFailureClassifier::PERMANENT || $this->attempts() >= $this->tries) {
+                report($exception);
+
+                return;
             }
 
-            report($exception);
+            throw $exception;
         }
     }
 
@@ -70,7 +77,12 @@ final class SendNotificationEmail implements ShouldQueue
         $delivery = NotificationDelivery::query()->find($this->deliveryId);
 
         if ($delivery instanceof NotificationDelivery && ! $delivery->isTerminal()) {
-            $delivery->markFailed($exception?->getMessage() ?? 'Email delivery failed.');
+            $classifier = app(EmailFailureClassifier::class);
+
+            $delivery->markFailed(
+                $exception !== null ? $classifier->reason($exception) : 'Email delivery failed.',
+                $exception !== null ? $classifier->classify($exception) : null,
+            );
         }
     }
 }

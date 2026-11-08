@@ -210,6 +210,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Email presentation
+    |--------------------------------------------------------------------------
+    |
+    | Brand assets and public links used by the branded email templates. The
+    | logo must be an absolute, publicly reachable URL: mail clients fetch it
+    | from their own network and cannot resolve a local filesystem path. In
+    | production `APP_URL` is HTTPS, so the default below is a public URL.
+    |
+    | `frontend_url` is where a recipient lands after clicking an email call to
+    | action. It is deliberately separate from the API URL: the API is not a
+    | human-facing surface.
+    |
+    */
+
+    'email' => [
+        'logo_url' => env(
+            'DUKAVO_EMAIL_LOGO_URL',
+            rtrim((string) env('APP_URL', 'http://localhost'), '/').'/images/email/dukavo-logo.png',
+        ),
+        'logo_width' => (int) env('DUKAVO_EMAIL_LOGO_WIDTH', 168),
+        'webhook_secret' => env('DUKAVO_EMAIL_WEBHOOK_SECRET'),
+        'support_email' => env('DUKAVO_SUPPORT_EMAIL', env('MAIL_FROM_ADDRESS', 'hello@example.com')),
+    ],
+
+    'urls' => [
+        'frontend' => env('FRONTEND_URL', env('APP_URL', 'http://localhost')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Marketing
     |--------------------------------------------------------------------------
     |

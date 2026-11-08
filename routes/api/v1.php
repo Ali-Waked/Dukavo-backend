@@ -73,6 +73,7 @@ use App\Http\Controllers\Api\V1\TenantSettingsController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\VoiceMessageController;
 use App\Http\Controllers\Api\V1\WhatsappAccountController;
+use App\Http\Controllers\Api\Webhook\EmailWebhookController;
 use App\Http\Controllers\Api\Webhook\WhatsappWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -140,6 +141,11 @@ Route::prefix('webhooks')->group(function (): void {
         ->name('webhooks.whatsapp.verify');
     Route::post('whatsapp', [WhatsappWebhookController::class, 'events'])
         ->name('webhooks.whatsapp.events');
+
+    // Transactional email delivery receipts. Signed with a shared secret, and
+    // closed when no secret is configured.
+    Route::post('email', EmailWebhookController::class)
+        ->name('webhooks.email');
 });
 
 /*

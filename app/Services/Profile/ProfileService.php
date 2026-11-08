@@ -7,6 +7,7 @@ namespace App\Services\Profile;
 use App\Enums\AuditAction;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Emails\AccountEmailService;
 use App\Services\Users\UserService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
@@ -27,7 +28,10 @@ class ProfileService
 {
     private const AVATAR_DISK = 'public';
 
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly AccountEmailService $accountEmails,
+    ) {}
 
     /**
      * Update the fields a user owns. Email and status are not here on purpose:
@@ -117,6 +121,12 @@ class ProfileService
         $this->audit->record(AuditAction::Updated, $user, [
             'new' => ['credential' => 'password_updated'],
         ], $user);
+
+        $this->accountEmails->send(
+            user: $user,
+            template: 'password_changed',
+            actionUrl: '/settings/security',
+        );
     }
 
     /**

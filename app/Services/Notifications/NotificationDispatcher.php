@@ -54,10 +54,14 @@ final class NotificationDispatcher
             }
         }
 
-        // Reached only after each notification transaction has committed.
-        foreach ($queued as [$channel, $deliveryId]) {
-            $this->dispatchJob($channel, $deliveryId);
-        }
+        // The delivery rows are committed, but the caller may still be inside a
+        // wider business transaction. Deferring the jobs until *that* commits
+        // is what stops a rolled-back order from ever sending an email.
+        DB::afterCommit(function () use ($queued): void {
+            foreach ($queued as [$channel, $deliveryId]) {
+                $this->dispatchJob($channel, $deliveryId);
+            }
+        });
 
         return count($queued);
     }

@@ -67,9 +67,9 @@ final class EmailNotificationSender implements NotificationSender
             return;
         }
 
-        Mail::to($recipient->email)->send(new NotificationMail($notification, $recipient));
+        $sent = Mail::to($recipient->email)->send(new NotificationMail($notification, $recipient));
 
-        $delivery->markSent();
+        $delivery->markSent($sent?->getMessageId());
     }
 
     private function recipient(NotificationDelivery $delivery): ?User

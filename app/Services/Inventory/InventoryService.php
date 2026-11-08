@@ -181,7 +181,9 @@ class InventoryService
             throw BusinessRuleViolation::because('Stock cannot be set below the quantity reserved for open orders.');
         }
 
-        return $this->applyMovement(
+        $previous = (int) $inventory->quantity;
+
+        $movement = $this->applyMovement(
             $inventory,
             InventoryMovementType::Adjustment,
             $newQuantity,
@@ -190,6 +192,48 @@ class InventoryService
             source: 'manual',
             idempotencyKey: $idempotencyKey,
         );
+
+        if ($movement->wasRecentlyCreated) {
+            $this->announceAdjustment($inventory, $previous, $newQuantity, $note ?? 'Manual stock adjustment');
+        }
+
+        return $movement;
+    }
+
+    /**
+     * Announce a manual stock take after the movement has committed.
+     *
+     * The event is informational, but it is still delivered through the same
+     * preference switch as other inventory alerts so a merchant can mute it
+     * without losing order or out-of-stock mail.
+     */
+    private function announceAdjustment(Inventory $inventory, int $previous, int $newQuantity, string $reason): void
+    {
+        $fresh = Inventory::query()->with(['product', 'variant', 'store'])->find($inventory->getKey());
+
+        if (! $fresh instanceof Inventory) {
+            return;
+        }
+
+        DB::afterCommit(function () use ($fresh, $previous, $newQuantity, $reason): void {
+            $this->notifications->dispatch(new NotificationIntent(
+                eventKey: Events::TENANT_INVENTORY_ADJUSTED,
+                tenantId: (int) $fresh->tenant_id,
+                dedupeKey: 'tenant.inventory.adjusted:'.$fresh->getKey().':'.$previous.':'.$newQuantity.':'.now()->timestamp,
+                data: [
+                    'inventory_id' => $fresh->getKey(),
+                    'product' => $fresh->product?->name ?? 'A product',
+                    'sku' => $fresh->variant?->sku,
+                    'store' => $fresh->store?->name ?? '',
+                    'previous_quantity' => $previous,
+                    'new_quantity' => $newQuantity,
+                    'delta' => $newQuantity - $previous,
+                    'reason' => $reason,
+                ],
+                actionUrl: '/inventory',
+                actorId: auth()->id(),
+            ));
+        });
     }
 
     /**
@@ -471,32 +515,70 @@ class InventoryService
     {
         $fresh = Inventory::query()->with(['product', 'variant', 'store'])->find($inventory->getKey());
 
-        if (! $fresh instanceof Inventory || $fresh->low_stock_threshold === null) {
+        if (! $fresh instanceof Inventory) {
             return;
         }
 
-        if ($fresh->available() > $fresh->low_stock_threshold) {
+        $available = $fresh->available();
+
+        // A stock-out is alertable even when no reorder threshold was set: zero
+        // sellable units is a fact, not a preference.
+        if ($available <= 0) {
+            $this->dispatchInventoryAlert($fresh, Events::TENANT_INVENTORY_OUT_OF_STOCK, $available);
+            event(AutomationInventoryLowStock::fromInventory($fresh, $movementId));
+
             return;
         }
 
+        if ($fresh->low_stock_threshold === null || $available > $fresh->low_stock_threshold) {
+            return;
+        }
+
+        $this->dispatchInventoryAlert($fresh, Events::TENANT_INVENTORY_LOW_STOCK, $available);
+
+        event(AutomationInventoryLowStock::fromInventory($fresh, $movementId));
+    }
+
+    /**
+     * Send a scheduled reminder for a row that is still low.
+     *
+     * The dispatcher's seven-day cooldown owns the repeat rate; this method only
+     * decides whether a reminder is still meaningful.
+     */
+    public function sendRestockReminder(Inventory $inventory): bool
+    {
+        $fresh = Inventory::query()->with(['product', 'variant', 'store'])->find($inventory->getKey());
+
+        if (! $fresh instanceof Inventory || ! $fresh->isLowStock()) {
+            return false;
+        }
+
+        $this->dispatchInventoryAlert($fresh, Events::TENANT_INVENTORY_RESTOCK_REMINDER, $fresh->available());
+
+        return true;
+    }
+
+    private function dispatchInventoryAlert(Inventory $inventory, string $eventKey, int $available): void
+    {
         $this->notifications->dispatch(new NotificationIntent(
-            eventKey: Events::TENANT_INVENTORY_LOW_STOCK,
-            tenantId: (int) $fresh->tenant_id,
-            dedupeKey: 'tenant.inventory.low_stock:'.$fresh->getKey(),
+            eventKey: $eventKey,
+            tenantId: (int) $inventory->tenant_id,
+            dedupeKey: $eventKey.':'.$inventory->getKey(),
             data: [
-                'product' => $fresh->product?->name ?? 'A product',
-                'quantity' => $fresh->available(),
-                'on_hand' => $fresh->quantity,
-                'reserved' => $fresh->reserved_quantity,
-                'threshold' => $fresh->low_stock_threshold,
-                'store' => $fresh->store?->name ?? '',
+                'inventory_id' => $inventory->getKey(),
+                'product' => $inventory->product?->name ?? 'A product',
+                'sku' => $inventory->variant?->sku,
+                'quantity' => $available,
+                'available' => $available,
+                'on_hand' => $inventory->quantity,
+                'reserved' => $inventory->reserved_quantity,
+                'threshold' => $inventory->low_stock_threshold,
+                'store' => $inventory->store?->name ?? '',
             ],
             actionUrl: '/inventory',
             actorId: auth()->id(),
-            severity: $fresh->available() <= 0 ? NotificationSeverity::Critical : NotificationSeverity::Warning,
+            severity: $available <= 0 ? NotificationSeverity::Critical : NotificationSeverity::Warning,
         ));
-
-        event(AutomationInventoryLowStock::fromInventory($fresh, $movementId));
     }
 
     /**

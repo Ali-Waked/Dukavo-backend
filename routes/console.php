@@ -6,6 +6,7 @@ use App\Services\Recovery\RecoveryDetectionService;
 use App\Services\Voice\VoiceMediaRetention;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -85,3 +86,16 @@ Artisan::command('recovery:detect {--tenant= : Detect for one tenant id} {--dry-
 
     return $totals['failed'] > 0 ? 1 : 0;
 })->purpose('Detect conservative lost-sale opportunities and wake/expire work')->hourly()->withoutOverlapping();
+
+/*
+ * Email schedules.
+ *
+ * Reports run in the morning so they are waiting when the workspace opens.
+ * Weekly reports cover the previous seven days; monthly and performance reports
+ * run on the first of the month. Restock reminders are daily, with the
+ * dispatcher's seven-day cooldown preventing a nagging repeat.
+ */
+Schedule::command('email:report weekly')->weeklyOn(1, '07:00')->withoutOverlapping();
+Schedule::command('email:report monthly')->monthlyOn(1, '07:30')->withoutOverlapping();
+Schedule::command('email:report performance')->monthlyOn(1, '08:00')->withoutOverlapping();
+Schedule::command('email:restock-reminders')->dailyAt('09:00')->withoutOverlapping();

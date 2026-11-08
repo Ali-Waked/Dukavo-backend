@@ -33,17 +33,33 @@ final class NotificationEventCatalog
 
     public const string PLATFORM_TENANT_REACTIVATED = 'platform.tenant.reactivated';
 
-    public const string PLATFORM_SUBSCRIPTION_EVENT = 'platform.subscription.event';
-
     public const string TENANT_ORDER_CREATED = 'tenant.order.created';
+
+    public const string TENANT_ORDER_PAID = 'tenant.order.paid';
+
+    public const string TENANT_ORDER_SHIPPED = 'tenant.order.shipped';
+
+    public const string TENANT_ORDER_DELIVERED = 'tenant.order.delivered';
+
+    public const string TENANT_ORDER_CANCELLED = 'tenant.order.cancelled';
+
+    public const string TENANT_ORDER_REFUNDED = 'tenant.order.refunded';
 
     public const string TENANT_ORDER_STATUS_CHANGED = 'tenant.order.status_changed';
 
     public const string TENANT_INVENTORY_LOW_STOCK = 'tenant.inventory.low_stock';
 
+    public const string TENANT_INVENTORY_OUT_OF_STOCK = 'tenant.inventory.out_of_stock';
+
+    public const string TENANT_INVENTORY_RESTOCK_REMINDER = 'tenant.inventory.restock_reminder';
+
+    public const string TENANT_INVENTORY_ADJUSTED = 'tenant.inventory.adjusted';
+
     public const string TENANT_CONVERSATION_MESSAGE_RECEIVED = 'tenant.conversation.message_received';
 
     public const string TENANT_CONVERSATION_ASSIGNED = 'tenant.conversation.assigned';
+
+    public const string TENANT_CONVERSATION_ATTENTION = 'tenant.conversation.attention';
 
     public const string TENANT_MESSAGE_FAILED = 'tenant.message.failed';
 
@@ -51,7 +67,31 @@ final class NotificationEventCatalog
 
     public const string TENANT_AI_ACTION_AWAITING_REVIEW = 'tenant.ai_action.awaiting_review';
 
+    public const string TENANT_AI_ACTION_APPROVED = 'tenant.ai_action.approved';
+
+    public const string TENANT_AI_ACTION_REJECTED = 'tenant.ai_action.rejected';
+
+    public const string TENANT_AI_ACTION_FAILED = 'tenant.ai_action.failed';
+
+    public const string TENANT_REPORT_WEEKLY = 'tenant.report.weekly';
+
+    public const string TENANT_REPORT_MONTHLY = 'tenant.report.monthly';
+
+    public const string TENANT_REPORT_PERFORMANCE = 'tenant.report.performance';
+
+    public const string TENANT_ANNOUNCEMENT_PRODUCT = 'tenant.announcement.product';
+
+    public const string TENANT_ANNOUNCEMENT_MAINTENANCE = 'tenant.announcement.maintenance';
+
+    public const string TENANT_ANNOUNCEMENT_RELEASE = 'tenant.announcement.release';
+
     public const string TENANT_AUTOMATION_TRIGGERED = 'tenant.automation.triggered';
+
+    /**
+     * Restock reminders repeat while an item stays low, so they are limited to
+     * one reminder per inventory row every seven days.
+     */
+    public const int RESTOCK_REMINDER_COOLDOWN_SECONDS = 604800;
 
     /**
      * Low-stock alerts repeat, so they are rate-limited per inventory row rather
@@ -142,6 +182,71 @@ final class NotificationEventCatalog
                 ],
             ),
             new NotificationEvent(
+                key: self::TENANT_ORDER_PAID,
+                scope: NotificationScope::Tenant,
+                category: 'orders',
+                severity: NotificationSeverity::Success,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'orders.view',
+                preference: 'order_updates',
+                messages: [
+                    'en' => ['title' => 'Payment received for {order_number}', 'body' => 'We recorded {total} as paid for this order.'],
+                    'ar' => ['title' => 'تم استلام دفعة للطلب {order_number}', 'body' => 'سجّلنا مبلغ {total} مدفوعًا لهذا الطلب.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_ORDER_SHIPPED,
+                scope: NotificationScope::Tenant,
+                category: 'orders',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'orders.view',
+                preference: 'order_updates',
+                messages: [
+                    'en' => ['title' => 'Order {order_number} has shipped', 'body' => 'The order left the warehouse and stock was deducted.'],
+                    'ar' => ['title' => 'تم شحن الطلب {order_number}', 'body' => 'غادر الطلب المستودع وتم خصم المخزون.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_ORDER_DELIVERED,
+                scope: NotificationScope::Tenant,
+                category: 'orders',
+                severity: NotificationSeverity::Success,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'orders.view',
+                preference: 'order_updates',
+                messages: [
+                    'en' => ['title' => 'Order {order_number} was delivered', 'body' => 'The order is now marked as delivered.'],
+                    'ar' => ['title' => 'تم تسليم الطلب {order_number}', 'body' => 'أصبح الطلب الآن مسلّمًا.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_ORDER_CANCELLED,
+                scope: NotificationScope::Tenant,
+                category: 'orders',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'orders.view',
+                preference: 'order_updates',
+                messages: [
+                    'en' => ['title' => 'Order {order_number} was cancelled', 'body' => 'Any reserved or shipped stock has been released.'],
+                    'ar' => ['title' => 'تم إلغاء الطلب {order_number}', 'body' => 'تم تحرير أي مخزون محجوز أو مشحون.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_ORDER_REFUNDED,
+                scope: NotificationScope::Tenant,
+                category: 'orders',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'orders.view',
+                preference: 'order_updates',
+                messages: [
+                    'en' => ['title' => 'Refund recorded for {order_number}', 'body' => '{total} is marked as refunded.'],
+                    'ar' => ['title' => 'تم تسجيل استرداد للطلب {order_number}', 'body' => 'تم تعليم مبلغ {total} كمسترد.'],
+                ],
+            ),
+            new NotificationEvent(
                 key: self::TENANT_ORDER_STATUS_CHANGED,
                 scope: NotificationScope::Tenant,
                 category: 'orders',
@@ -166,6 +271,47 @@ final class NotificationEventCatalog
                 messages: [
                     'en' => ['title' => 'Low stock: {product}', 'body' => '{product} has only {quantity} left at {store}.'],
                     'ar' => ['title' => 'مخزون منخفض: {product}', 'body' => 'تبقّى {quantity} فقط من {product} في {store}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_INVENTORY_OUT_OF_STOCK,
+                scope: NotificationScope::Tenant,
+                category: 'inventory',
+                severity: NotificationSeverity::Critical,
+                channels: [NotificationChannel::Mail, NotificationChannel::WhatsApp],
+                permission: 'inventory.manage',
+                preference: 'low_stock',
+                cooldownSeconds: self::LOW_STOCK_COOLDOWN_SECONDS,
+                messages: [
+                    'en' => ['title' => 'Out of stock: {product}', 'body' => '{product} has no sellable stock left at {store}.'],
+                    'ar' => ['title' => 'نفد المخزون: {product}', 'body' => 'لم يتبقَّ مخزون قابل للبيع من {product} في {store}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_INVENTORY_RESTOCK_REMINDER,
+                scope: NotificationScope::Tenant,
+                category: 'inventory',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail],
+                permission: 'inventory.manage',
+                preference: 'low_stock',
+                cooldownSeconds: self::RESTOCK_REMINDER_COOLDOWN_SECONDS,
+                messages: [
+                    'en' => ['title' => 'Restock reminder: {product}', 'body' => '{product} still has only {quantity} available at {store}.'],
+                    'ar' => ['title' => 'تذكير بإعادة التخزين: {product}', 'body' => 'لا يزال المتاح من {product} {quantity} فقط في {store}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_INVENTORY_ADJUSTED,
+                scope: NotificationScope::Tenant,
+                category: 'inventory',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                permission: 'inventory.manage',
+                preference: 'low_stock',
+                messages: [
+                    'en' => ['title' => 'Stock adjusted: {product}', 'body' => '{product} changed from {previous_quantity} to {new_quantity} at {store}.'],
+                    'ar' => ['title' => 'تم تعديل المخزون: {product}', 'body' => 'تغيّر {product} من {previous_quantity} إلى {new_quantity} في {store}.'],
                 ],
             ),
             new NotificationEvent(
@@ -195,6 +341,19 @@ final class NotificationEventCatalog
                 ],
             ),
             new NotificationEvent(
+                key: self::TENANT_CONVERSATION_ATTENTION,
+                scope: NotificationScope::Tenant,
+                category: 'messages',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail],
+                permission: 'conversations.view',
+                preference: 'new_messages',
+                messages: [
+                    'en' => ['title' => 'A conversation needs attention', 'body' => '{customer} — {preview}'],
+                    'ar' => ['title' => 'محادثة تحتاج إلى انتباه', 'body' => '{customer} — {preview}'],
+                ],
+            ),
+            new NotificationEvent(
                 key: self::TENANT_MESSAGE_FAILED,
                 scope: NotificationScope::Tenant,
                 category: 'messages',
@@ -218,6 +377,123 @@ final class NotificationEventCatalog
                 messages: [
                     'en' => ['title' => 'AI action needs your approval', 'body' => '{summary}'],
                     'ar' => ['title' => 'إجراء ذكاء اصطناعي يحتاج موافقتك', 'body' => '{summary}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_AI_ACTION_APPROVED,
+                scope: NotificationScope::Tenant,
+                category: 'automation',
+                severity: NotificationSeverity::Success,
+                channels: [NotificationChannel::Mail],
+                permission: 'ai.approve',
+                preference: 'approvals',
+                messages: [
+                    'en' => ['title' => 'AI action approved', 'body' => '{summary}'],
+                    'ar' => ['title' => 'تمت الموافقة على إجراء ذكاء اصطناعي', 'body' => '{summary}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_AI_ACTION_REJECTED,
+                scope: NotificationScope::Tenant,
+                category: 'automation',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail],
+                permission: 'ai.approve',
+                preference: 'approvals',
+                messages: [
+                    'en' => ['title' => 'AI action rejected', 'body' => '{summary}'],
+                    'ar' => ['title' => 'تم رفض إجراء ذكاء اصطناعي', 'body' => '{summary}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_AI_ACTION_FAILED,
+                scope: NotificationScope::Tenant,
+                category: 'automation',
+                severity: NotificationSeverity::Critical,
+                channels: [NotificationChannel::Mail],
+                permission: 'ai.approve',
+                preference: 'approvals',
+                messages: [
+                    'en' => ['title' => 'AI action failed', 'body' => '{summary}'],
+                    'ar' => ['title' => 'فشل إجراء ذكاء اصطناعي', 'body' => '{summary}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_REPORT_WEEKLY,
+                scope: NotificationScope::Tenant,
+                category: 'reports',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                permission: 'profit.view',
+                preference: 'weekly_summary',
+                messages: [
+                    'en' => ['title' => 'Your weekly business summary', 'body' => '{period}: {orders} orders and {net_revenue} net revenue.'],
+                    'ar' => ['title' => 'ملخص أعمالك الأسبوعي', 'body' => '{period}: {orders} طلبًا وصافي إيرادات {net_revenue}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_REPORT_MONTHLY,
+                scope: NotificationScope::Tenant,
+                category: 'reports',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                permission: 'profit.view',
+                preference: 'weekly_summary',
+                messages: [
+                    'en' => ['title' => 'Your monthly business report', 'body' => '{period}: {orders} orders and {net_revenue} net revenue.'],
+                    'ar' => ['title' => 'تقرير أعمالك الشهري', 'body' => '{period}: {orders} طلبًا وصافي إيرادات {net_revenue}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_REPORT_PERFORMANCE,
+                scope: NotificationScope::Tenant,
+                category: 'reports',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                permission: 'profit.view',
+                preference: 'weekly_summary',
+                messages: [
+                    'en' => ['title' => 'Business performance summary', 'body' => '{period}: {orders} orders and {net_revenue} net revenue.'],
+                    'ar' => ['title' => 'ملخص أداء الأعمال', 'body' => '{period}: {orders} طلبًا وصافي إيرادات {net_revenue}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_ANNOUNCEMENT_PRODUCT,
+                scope: NotificationScope::Tenant,
+                category: 'announcements',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                permission: 'dashboard.view',
+                preference: 'product_news',
+                messages: [
+                    'en' => ['title' => '{title}', 'body' => '{summary}'],
+                    'ar' => ['title' => '{title}', 'body' => '{summary}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_ANNOUNCEMENT_RELEASE,
+                scope: NotificationScope::Tenant,
+                category: 'announcements',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                permission: 'dashboard.view',
+                preference: 'product_news',
+                messages: [
+                    'en' => ['title' => '{title}', 'body' => '{summary}'],
+                    'ar' => ['title' => '{title}', 'body' => '{summary}'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_ANNOUNCEMENT_MAINTENANCE,
+                scope: NotificationScope::Tenant,
+                category: 'announcements',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail],
+                permission: 'dashboard.view',
+                preference: null,
+                messages: [
+                    'en' => ['title' => 'Scheduled maintenance', 'body' => '{summary}'],
+                    'ar' => ['title' => 'صيانة مجدولة', 'body' => '{summary}'],
                 ],
             ),
             new NotificationEvent(
@@ -264,17 +540,6 @@ final class NotificationEventCatalog
                 messages: [
                     'en' => ['title' => 'Automation: {rule}', 'body' => '{message}'],
                     'ar' => ['title' => 'أتمتة: {rule}', 'body' => '{message}'],
-                ],
-            ),
-            new NotificationEvent(
-                key: self::PLATFORM_SUBSCRIPTION_EVENT,
-                scope: NotificationScope::Platform,
-                category: 'billing',
-                severity: NotificationSeverity::Info,
-                channels: [NotificationChannel::Mail],
-                messages: [
-                    'en' => ['title' => 'Subscription update', 'body' => '{summary}'],
-                    'ar' => ['title' => 'تحديث الاشتراك', 'body' => '{summary}'],
                 ],
             ),
         ];

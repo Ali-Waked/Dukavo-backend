@@ -4,6 +4,7 @@ namespace App\Actions\Fortify;
 
 use App\Enums\UserStatus;
 use App\Models\User;
+use App\Services\Emails\AccountEmailService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -12,6 +13,8 @@ use Laravel\Fortify\Contracts\ResetsUserPasswords;
 class ResetUserPassword implements ResetsUserPasswords
 {
     use PasswordValidationRules;
+
+    public function __construct(private readonly AccountEmailService $accountEmails) {}
 
     /**
      * Validate and reset the user's forgotten password.
@@ -38,5 +41,11 @@ class ResetUserPassword implements ResetsUserPasswords
         }
 
         $user->forceFill($attributes)->save();
+
+        $this->accountEmails->send(
+            user: $user,
+            template: 'password_changed',
+            actionUrl: '/settings/security',
+        );
     }
 }

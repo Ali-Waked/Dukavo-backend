@@ -380,6 +380,8 @@ class ConversationService
             tenantId: (int) $conversation->tenant_id,
             dedupeKey: 'tenant.conversation.message_received:'.$message->getKey(),
             data: [
+                'conversation_id' => $conversation->getKey(),
+                'message_id' => $message->getKey(),
                 'customer' => $name,
                 'preview' => $this->preview($message->body),
             ],
@@ -404,6 +406,7 @@ class ConversationService
             tenantId: $tenantId,
             dedupeKey: 'tenant.conversation.assigned:'.$conversation->getKey().':'.$assignee->getKey(),
             data: [
+                'conversation_id' => $conversation->getKey(),
                 'customer' => $customer,
                 'preview' => $conversation->subject ?: 'A conversation needs your attention.',
             ],
@@ -541,6 +544,8 @@ class ConversationService
             tenantId: (int) $conversation->tenant_id,
             dedupeKey: 'tenant.message.failed:'.$message->getKey(),
             data: [
+                'conversation_id' => $conversation->getKey(),
+                'message_id' => $message->getKey(),
                 'customer' => $customer,
                 'reason' => $reason,
                 'preview' => $this->preview($message->body),

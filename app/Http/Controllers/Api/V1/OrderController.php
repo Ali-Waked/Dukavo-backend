@@ -86,6 +86,10 @@ class OrderController extends Controller
             $order = $this->orders->markPaid($order);
         }
 
+        if ($request->validated('payment_status') === PaymentStatus::Refunded->value) {
+            $order = $this->orders->markRefunded($order);
+        }
+
         return new OrderResource($order);
     }
 

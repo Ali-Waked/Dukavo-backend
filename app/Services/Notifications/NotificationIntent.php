@@ -18,7 +18,7 @@ use App\Enums\NotificationSeverity;
 final readonly class NotificationIntent
 {
     /**
-     * @param  array<string, scalar|null>  $data
+     * @param  array<string, mixed>  $data
      * @param  list<int>|null  $recipientIds  narrows the audience to named users; null means everyone the event permits
      */
     public function __construct(

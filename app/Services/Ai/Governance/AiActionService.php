@@ -7,6 +7,7 @@ namespace App\Services\Ai\Governance;
 use App\Enums\AiActionClassification;
 use App\Enums\AiActionStatus;
 use App\Enums\AuditAction;
+use App\Enums\NotificationSeverity;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\AiAction;
 use App\Models\Tenant;
@@ -185,6 +186,7 @@ final class AiActionService
             tenantId: (int) $tenant->getKey(),
             dedupeKey: 'tenant.ai_action.awaiting_review:'.$submitted->getKey(),
             data: [
+                'ai_action_id' => $submitted->getKey(),
                 'summary' => $submitted->summary ?: $submitted->action_type,
             ],
             actionUrl: '/ai/approvals',
@@ -240,7 +242,11 @@ final class AiActionService
             ]);
         });
 
-        return $approved ?? throw BusinessRuleViolation::because('This action has expired. Ask for a fresh proposal.');
+        $approved ?? throw BusinessRuleViolation::because('This action has expired. Ask for a fresh proposal.');
+
+        $this->announceDecision($approved, $actor, Events::TENANT_AI_ACTION_APPROVED, NotificationSeverity::Success);
+
+        return $approved;
     }
 
     /**
@@ -266,7 +272,11 @@ final class AiActionService
             ]);
         });
 
-        return $rejected ?? throw BusinessRuleViolation::because('This action has already expired.');
+        $rejected ?? throw BusinessRuleViolation::because('This action has already expired.');
+
+        $this->announceDecision($rejected, $actor, Events::TENANT_AI_ACTION_REJECTED, NotificationSeverity::Warning);
+
+        return $rejected;
     }
 
     /**
@@ -340,6 +350,7 @@ final class AiActionService
             // one has rolled back its business effect, and a status update
             // inside it would roll back too.
             $this->recordFailure($action->getKey(), $actor, $exception);
+            $this->announceDecision($action, $actor, Events::TENANT_AI_ACTION_FAILED, NotificationSeverity::Critical, $exception->getMessage());
 
             throw $exception;
         }
@@ -487,6 +498,36 @@ final class AiActionService
         } catch (Throwable $auditFailure) {
             report($auditFailure);
         }
+    }
+
+    /**
+     * Tell the other approvers what was decided.
+     *
+     * The actor is excluded by the dispatcher, so a reviewer is never emailed
+     * about the decision they just made. The email never approves or executes
+     * anything; it points at the approval queue.
+     */
+    private function announceDecision(
+        AiAction $action,
+        User $actor,
+        string $eventKey,
+        NotificationSeverity $severity,
+        ?string $reason = null,
+    ): void {
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: $eventKey,
+            tenantId: (int) $action->tenant_id,
+            dedupeKey: $eventKey.':'.$action->getKey(),
+            data: [
+                'ai_action_id' => $action->getKey(),
+                'summary' => $action->summary ?: $action->action_type,
+                'status' => $action->status->label(),
+                'reason' => $reason,
+            ],
+            actionUrl: '/ai/approvals',
+            actorId: (int) $actor->getKey(),
+            severity: $severity,
+        ));
     }
 
     /**
