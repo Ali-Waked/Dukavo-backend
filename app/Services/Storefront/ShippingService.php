@@ -15,15 +15,47 @@ use Illuminate\Support\Str;
  *
  * The client may say where it wants the order delivered, but the fee is always
  * read from the store's own zone table. A client-supplied fee is never used.
+ *
+ * Copy is stored separately from the rules: English in the canonical columns,
+ * every other language in `translations`. Saving one language never clears
+ * another, which is what lets a merchant fill in Arabic over several visits.
  */
 class ShippingService
 {
+    /**
+     * @var list<string>
+     */
+    private const COPY_FIELDS = [
+        'name',
+        'description',
+        'method_name',
+        'method_description',
+        'delivery_instructions',
+        'terms',
+    ];
+
+    /**
+     * The `_ar` names used by the rest of the shop content API. They are
+     * accepted and returned as aliases so shipping follows the same contract.
+     *
+     * @var array<string, string>
+     */
+    private const ARABIC_ALIASES = [
+        'name_ar' => 'name',
+        'description_ar' => 'description',
+        'method_name_ar' => 'method_name',
+        'method_description_ar' => 'method_description',
+        'delivery_instructions_ar' => 'delivery_instructions',
+        'terms_ar' => 'terms',
+    ];
+
     /**
      * @return Collection<int, ShippingZone>
      */
     public function forStore(Store $store, bool $activeOnly = false): Collection
     {
         return ShippingZone::query()
+            ->with('store.tenant')
             ->where('store_id', $store->getKey())
             ->when($activeOnly, fn ($query) => $query->active())
             ->orderBy('sort_order')
@@ -36,10 +68,18 @@ class ShippingService
      */
     public function create(Store $store, array $attributes): ShippingZone
     {
+        $translations = $this->translationsFromPayload($attributes, []);
+
         return ShippingZone::query()->create([
             'tenant_id' => $store->tenant_id,
             'store_id' => $store->getKey(),
             'name' => $attributes['name'],
+            'description' => $this->nullableText($attributes['description'] ?? null),
+            'method_name' => $this->nullableText($attributes['method_name'] ?? null),
+            'method_description' => $this->nullableText($attributes['method_description'] ?? null),
+            'delivery_instructions' => $this->nullableText($attributes['delivery_instructions'] ?? null),
+            'terms' => $this->nullableText($attributes['terms'] ?? null),
+            'translations' => $translations === [] ? null : $translations,
             'city' => $this->normaliseNullable($attributes['city'] ?? null),
             'areas' => $this->normaliseAreas($attributes['areas'] ?? null),
             'fee' => round((float) ($attributes['fee'] ?? 0), 2),
@@ -54,6 +94,26 @@ class ShippingService
      */
     public function update(ShippingZone $zone, array $attributes): ShippingZone
     {
+        $hasTranslations = array_key_exists('translations', $attributes)
+            || $this->hasArabicAlias($attributes);
+
+        if ($hasTranslations) {
+            $attributes['translations'] = $this->translationsFromPayload(
+                $attributes,
+                $zone->translationDocument(),
+            ) ?: null;
+        }
+
+        foreach (array_keys(self::ARABIC_ALIASES) as $alias) {
+            unset($attributes[$alias]);
+        }
+
+        foreach (self::COPY_FIELDS as $field) {
+            if (array_key_exists($field, $attributes)) {
+                $attributes[$field] = $this->nullableText($attributes[$field]);
+            }
+        }
+
         if (array_key_exists('city', $attributes)) {
             $attributes['city'] = $this->normaliseNullable($attributes['city']);
         }
@@ -148,6 +208,109 @@ class ShippingService
             'free_shipping' => $freeShipping,
             'merchandise_total' => $merchandiseTotal,
         ];
+    }
+
+    /**
+     * Build the next translation document from a payload.
+     *
+     * A PATCH is merged field by field against what is already stored, so
+     * editing the English name or clearing one Arabic field cannot erase an
+     * unrelated translation. Explicit `null` clears a field.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @param  array<string, array<string, string|null>>  $existing
+     * @return array<string, array<string, string>>
+     */
+    private function translationsFromPayload(array $attributes, array $existing): array
+    {
+        $document = $existing;
+        $supported = array_map(
+            static fn (mixed $locale): string => strtolower((string) $locale),
+            (array) config('dukavo.locales.supported', ['en', 'ar']),
+        );
+
+        $provided = $attributes['translations'] ?? null;
+
+        if (is_array($provided)) {
+            foreach ($provided as $locale => $fields) {
+                $locale = strtolower(trim((string) $locale));
+
+                if ($locale === '' || $locale === ShippingZone::CANONICAL_LOCALE || ! in_array($locale, $supported, true) || ! is_array($fields)) {
+                    continue;
+                }
+
+                foreach (self::COPY_FIELDS as $field) {
+                    if (array_key_exists($field, $fields)) {
+                        $document[$locale][$field] = $this->nullableText($fields[$field]);
+                    }
+                }
+            }
+        }
+
+        foreach (self::ARABIC_ALIASES as $alias => $field) {
+            if (array_key_exists($alias, $attributes)) {
+                $document['ar'][$field] = $this->nullableText($attributes[$alias]);
+            }
+        }
+
+        return $this->cleanTranslations($document);
+    }
+
+    /**
+     * Drop blank fields and empty locales so the stored document is honest
+     * about what has actually been translated.
+     *
+     * @param  array<string, array<string, string|null>>  $document
+     * @return array<string, array<string, string>>
+     */
+    private function cleanTranslations(array $document): array
+    {
+        $clean = [];
+
+        foreach ($document as $locale => $fields) {
+            if (! is_array($fields)) {
+                continue;
+            }
+
+            foreach (self::COPY_FIELDS as $field) {
+                if (! array_key_exists($field, $fields)) {
+                    continue;
+                }
+
+                $value = $this->nullableText($fields[$field]);
+
+                if ($value !== null) {
+                    $clean[$locale][$field] = $value;
+                }
+            }
+        }
+
+        return array_filter($clean, static fn (array $fields): bool => $fields !== []);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function hasArabicAlias(array $attributes): bool
+    {
+        foreach (array_keys(self::ARABIC_ALIASES) as $alias) {
+            if (array_key_exists($alias, $attributes)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function nullableText(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
     }
 
     /**

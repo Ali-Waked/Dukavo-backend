@@ -7,8 +7,8 @@ namespace App\Http\Controllers\Api\V1\Storefront;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Storefront\PublicCategoryResource;
 use App\Http\Resources\Storefront\PublicProductResource;
+use App\Http\Resources\Storefront\PublicShippingZoneResource;
 use App\Http\Resources\Storefront\PublicStorefrontResource;
-use App\Http\Resources\Storefront\ShippingZoneResource;
 use App\Models\Store;
 use App\Models\Tenant;
 use App\Services\Storefront\PaymentService;
@@ -74,7 +74,7 @@ class PublicStorefrontController extends Controller
 
     public function shippingZones(string $tenantSlug, string $storeSlug): AnonymousResourceCollection
     {
-        return $this->withStore($tenantSlug, $storeSlug, fn (Store $store) => ShippingZoneResource::collection(
+        return $this->withStore($tenantSlug, $storeSlug, fn (Store $store) => PublicShippingZoneResource::collection(
             $this->shipping->forStore($store, activeOnly: true),
         ));
     }
