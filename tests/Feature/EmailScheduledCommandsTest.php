@@ -164,8 +164,10 @@ class EmailScheduledCommandsTest extends TestCase
             '--summary' => 'Filter every report by store.',
         ])->assertSuccessful();
 
+        // Marketing is opt-in on every channel, so a fresh account receives
+        // neither an in-app record nor an email until it consents.
         $this->assertSame(
-            1,
+            0,
             $merchant->notifications()->where('event_key', Events::TENANT_ANNOUNCEMENT_PRODUCT)->count(),
         );
         $this->assertSame(

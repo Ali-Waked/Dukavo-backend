@@ -149,6 +149,10 @@ class EmailDeliveryTest extends TestCase
         $merchant = $this->memberOf($this->tenant, 'merchant');
         $merchant->forceFill([
             'notification_preferences' => [
+                // Marketing is opt-in on every channel. Keep the in-app copy
+                // visible and mute only email so this test isolates the email
+                // preference rather than the safe default.
+                'in_app' => ['product_news' => true],
                 'email' => ['product_news' => false, 'order_updates' => false],
             ],
         ])->save();
