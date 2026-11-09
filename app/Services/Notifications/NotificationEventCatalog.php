@@ -87,6 +87,18 @@ final class NotificationEventCatalog
 
     public const string TENANT_AUTOMATION_TRIGGERED = 'tenant.automation.triggered';
 
+    public const string TENANT_TEAM_MEMBER_INVITED = 'tenant.team.member_invited';
+
+    public const string TENANT_TEAM_MEMBER_JOINED = 'tenant.team.member_joined';
+
+    public const string TENANT_TEAM_ROLE_CHANGED = 'tenant.team.role_changed';
+
+    public const string TENANT_TEAM_PERMISSION_CHANGED = 'tenant.team.permission_changed';
+
+    public const string TENANT_TEAM_MEMBER_REMOVED = 'tenant.team.member_removed';
+
+    public const string TENANT_SECURITY_PASSWORD_RESET = 'tenant.security.password_reset';
+
     /**
      * Restock reminders repeat while an item stays low, so they are limited to
      * one reminder per inventory row every seven days.
@@ -542,7 +554,92 @@ final class NotificationEventCatalog
                     'ar' => ['title' => 'أتمتة: {rule}', 'body' => '{message}'],
                 ],
             ),
+            new NotificationEvent(
+                key: self::TENANT_TEAM_MEMBER_INVITED,
+                scope: NotificationScope::Tenant,
+                category: 'team',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                permission: 'users.manage',
+                preference: 'team_activity',
+                messages: [
+                    'en' => ['title' => 'Team member invited', 'body' => '{actor} invited {member} as {role}.'],
+                    'ar' => ['title' => 'تمت دعوة عضو إلى الفريق', 'body' => 'دعا {actor} {member} بصفة {role}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_TEAM_MEMBER_JOINED,
+                scope: NotificationScope::Tenant,
+                category: 'team',
+                severity: NotificationSeverity::Success,
+                channels: [NotificationChannel::Mail],
+                permission: 'users.manage',
+                preference: 'team_activity',
+                messages: [
+                    'en' => ['title' => 'Team member joined', 'body' => '{member} joined the workspace.'],
+                    'ar' => ['title' => 'انضم عضو إلى الفريق', 'body' => 'انضم {member} إلى مساحة العمل.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_TEAM_ROLE_CHANGED,
+                scope: NotificationScope::Tenant,
+                category: 'team',
+                severity: NotificationSeverity::Info,
+                channels: [NotificationChannel::Mail],
+                permission: 'users.manage',
+                preference: 'team_activity',
+                messages: [
+                    'en' => ['title' => 'Team role changed', 'body' => '{member} is now {role}.'],
+                    'ar' => ['title' => 'تغيّر دور عضو في الفريق', 'body' => 'أصبح دور {member} الآن {role}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_TEAM_PERMISSION_CHANGED,
+                scope: NotificationScope::Tenant,
+                category: 'team',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail],
+                permission: 'roles.manage',
+                preference: 'team_activity',
+                messages: [
+                    'en' => ['title' => 'Role permissions updated', 'body' => 'The permissions of {role} were updated by {actor}.'],
+                    'ar' => ['title' => 'تم تحديث صلاحيات الدور', 'body' => 'حدّث {actor} صلاحيات {role}.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_TEAM_MEMBER_REMOVED,
+                scope: NotificationScope::Tenant,
+                category: 'team',
+                severity: NotificationSeverity::Warning,
+                channels: [NotificationChannel::Mail],
+                permission: 'users.manage',
+                preference: 'team_activity',
+                messages: [
+                    'en' => ['title' => 'Team member removed', 'body' => '{member} was removed from the workspace.'],
+                    'ar' => ['title' => 'تمت إزالة عضو من الفريق', 'body' => 'أُزيل {member} من مساحة العمل.'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::TENANT_SECURITY_PASSWORD_RESET,
+                scope: NotificationScope::Tenant,
+                category: 'security',
+                severity: NotificationSeverity::Critical,
+                channels: [NotificationChannel::Mail],
+                permission: 'dashboard.view',
+                preference: 'security_alerts',
+                messages: [
+                    'en' => ['title' => 'Your password was reset', 'body' => 'If you did not make this change, contact support immediately.'],
+                    'ar' => ['title' => 'تمت إعادة تعيين كلمة المرور', 'body' => 'إذا لم تقم بهذا التغيير، فتواصل مع الدعم فورًا.'],
+                ],
+            ),
         ];
+
+        // Push is available for every event; individual preference switches
+        // still decide whether a given person receives it.
+        $events = array_map(
+            static fn (NotificationEvent $event): NotificationEvent => $event->withChannel(NotificationChannel::Push),
+            $events,
+        );
 
         return $this->keyBy($events);
     }

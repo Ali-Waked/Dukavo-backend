@@ -36,6 +36,33 @@ final readonly class NotificationEvent
     ) {}
 
     /**
+     * A copy of this event that also allows the given transport.
+     *
+     * Push is enabled for the whole catalogue in one place rather than being
+     * repeated on every definition: a push is never the only copy (the in-app
+     * row always exists), and each event's preference switch still decides
+     * whether it is sent. Adding a transport later means changing one call.
+     */
+    public function withChannel(NotificationChannel $channel): self
+    {
+        if (in_array($channel, $this->channels, true)) {
+            return $this;
+        }
+
+        return new self(
+            key: $this->key,
+            scope: $this->scope,
+            category: $this->category,
+            severity: $this->severity,
+            channels: [...$this->channels, $channel],
+            permission: $this->permission,
+            preference: $this->preference,
+            cooldownSeconds: $this->cooldownSeconds,
+            messages: $this->messages,
+        );
+    }
+
+    /**
      * Render the title and body in the recipient's language.
      *
      * A locale without a translation falls back to the configured default, so a

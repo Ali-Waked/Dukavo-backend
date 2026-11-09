@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\NotificationPriority;
 use App\Enums\NotificationScope;
 use App\Enums\NotificationSeverity;
 use Database\Factories\NotificationFactory;
@@ -27,9 +28,9 @@ use Illuminate\Support\Str;
  * email was delivered, and an email failure does not touch this record.
  */
 #[Fillable([
-    'id', 'notifiable_type', 'notifiable_id', 'tenant_id', 'scope', 'event_key',
-    'category', 'severity', 'title', 'body', 'action_url', 'data', 'dedupe_key',
-    'read_at', 'archived_at',
+    'id', 'notifiable_type', 'notifiable_id', 'tenant_id', 'store_id', 'scope', 'event_key',
+    'category', 'severity', 'priority', 'title', 'body', 'action_url', 'data', 'related_type',
+    'related_id', 'dedupe_key', 'read_at', 'archived_at',
 ])]
 class Notification extends Model
 {
@@ -50,6 +51,7 @@ class Notification extends Model
         return [
             'scope' => NotificationScope::class,
             'severity' => NotificationSeverity::class,
+            'priority' => NotificationPriority::class,
             'data' => 'array',
             'read_at' => 'datetime',
             'archived_at' => 'datetime',
@@ -79,6 +81,24 @@ class Notification extends Model
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
+    }
+
+    /**
+     * @return BelongsTo<Store, $this>
+     */
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    /**
+     * The business record this notification is about, when it names one.
+     *
+     * @return MorphTo<Model, $this>
+     */
+    public function related(): MorphTo
+    {
+        return $this->morphTo();
     }
 
     /**

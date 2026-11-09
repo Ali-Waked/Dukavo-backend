@@ -110,7 +110,7 @@ class UserController extends Controller
 
         // Deactivating rather than deleting: the user may hold rows in orders and
         // conversations, and an audit trail that loses its actors is worthless.
-        $this->users->suspend($user);
+        $this->users->suspend($user, $this->tenants->required());
 
         return response()->noContent();
     }

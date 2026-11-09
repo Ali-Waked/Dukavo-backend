@@ -9,6 +9,9 @@ use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\Emails\AccountEmailService;
+use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Notifications\NotificationEventCatalog;
+use App\Services\Notifications\NotificationIntent;
 use App\Services\Tenancy\TenantService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
@@ -26,6 +29,7 @@ class UserService
     public function __construct(
         private readonly TenantService $tenants,
         private readonly AccountEmailService $accountEmails,
+        private readonly NotificationDispatcher $notifications,
     ) {}
 
     /**
@@ -35,7 +39,7 @@ class UserService
      */
     public function createForTenant(Tenant $tenant, Role $role, array $attributes): User
     {
-        return DB::transaction(function () use ($tenant, $role, $attributes): User {
+        $user = DB::transaction(function () use ($tenant, $role, $attributes): User {
             $user = User::query()->create([
                 'name' => $attributes['name'],
                 'email' => $this->normaliseEmail($attributes['email']),
@@ -53,6 +57,23 @@ class UserService
 
             return $user;
         });
+
+        // Told after the invitation committed, so a rollback never leaves the
+        // team with a notification about a member who does not exist.
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: NotificationEventCatalog::TENANT_TEAM_MEMBER_INVITED,
+            tenantId: $tenant->getKey(),
+            dedupeKey: 'team.member.invited:'.$user->getKey(),
+            data: [
+                'actor' => auth()->user()?->name ?? (string) config('dukavo.name', 'Dukavo'),
+                'member' => $user->name,
+                'role' => $role->name,
+            ],
+            actionUrl: '/team',
+            actorId: auth()->id(),
+        ));
+
+        return $user;
     }
 
     /**
@@ -148,10 +169,24 @@ class UserService
      * Suspending a user immediately revokes their sessions so the change takes
      * effect without waiting for a token to expire.
      */
-    public function suspend(User $user): User
+    public function suspend(User $user, ?Tenant $tenant = null): User
     {
         $user->forceFill(['status' => UserStatus::Suspended])->save();
         $user->tokens()->delete();
+
+        if ($tenant instanceof Tenant) {
+            $this->notifications->dispatch(new NotificationIntent(
+                eventKey: NotificationEventCatalog::TENANT_TEAM_MEMBER_REMOVED,
+                tenantId: $tenant->getKey(),
+                dedupeKey: 'team.member.removed:'.$user->getKey().':'.$tenant->getKey(),
+                data: [
+                    'member' => $user->name,
+                    'actor' => auth()->user()?->name ?? (string) config('dukavo.name', 'Dukavo'),
+                ],
+                actionUrl: '/team',
+                actorId: auth()->id(),
+            ));
+        }
 
         return $user;
     }

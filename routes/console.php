@@ -99,3 +99,15 @@ Schedule::command('email:report weekly')->weeklyOn(1, '07:00')->withoutOverlappi
 Schedule::command('email:report monthly')->monthlyOn(1, '07:30')->withoutOverlapping();
 Schedule::command('email:report performance')->monthlyOn(1, '08:00')->withoutOverlapping();
 Schedule::command('email:restock-reminders')->dailyAt('09:00')->withoutOverlapping();
+
+/*
+ * Notification housekeeping. Runs in the quiet hours so a large delete never
+ * competes with the report or restock jobs above.
+ */
+Schedule::command('notifications:prune')->dailyAt('03:30')->withoutOverlapping();
+
+/*
+ * Campaign clock. A scheduled announcement is published when this runs, and a
+ * published campaign is closed once its ledger has no work left.
+ */
+Schedule::command('notifications:campaigns')->everyMinute()->withoutOverlapping();

@@ -41,6 +41,7 @@ use App\Http\Controllers\Api\V1\Marketing\NewsletterController;
 use App\Http\Controllers\Api\V1\Marketing\PricingController;
 use App\Http\Controllers\Api\V1\Marketing\WaitlistController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\NotificationDeviceController;
 use App\Http\Controllers\Api\V1\NotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OnboardingController;
 use App\Http\Controllers\Api\V1\OrderController;
@@ -51,6 +52,7 @@ use App\Http\Controllers\Api\V1\Platform\ContentPageController as PlatformConten
 use App\Http\Controllers\Api\V1\Platform\FaqEntryController;
 use App\Http\Controllers\Api\V1\Platform\NewsletterController as PlatformNewsletterController;
 use App\Http\Controllers\Api\V1\Platform\NewsletterSubscriberController;
+use App\Http\Controllers\Api\V1\Platform\NotificationCampaignController;
 use App\Http\Controllers\Api\V1\Platform\PlatformDashboardController;
 use App\Http\Controllers\Api\V1\Platform\PlatformInsightsController;
 use App\Http\Controllers\Api\V1\Platform\PricingPlanController;
@@ -238,6 +240,21 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
             Route::get('notifications', [NotificationPreferenceController::class, 'show'])->name('notifications.show');
             Route::put('notifications', [NotificationPreferenceController::class, 'update'])->name('notifications.update');
         });
+
+        /*
+         * Push installations. A user may have several; each token belongs to
+         * one phone and is revoked on logout or when Firebase rejects it.
+         * `unregister` accepts the token itself so logout can clean up even
+         * when the app no longer remembers the numeric id.
+         */
+        Route::prefix('devices')->name('devices.')->group(function (): void {
+            Route::get('/', [NotificationDeviceController::class, 'index'])->name('index');
+            Route::post('/', [NotificationDeviceController::class, 'store'])
+                ->middleware('throttle:notification-devices')->name('store');
+            Route::post('unregister', [NotificationDeviceController::class, 'unregister'])->name('unregister');
+            Route::patch('{device}', [NotificationDeviceController::class, 'update'])->name('update');
+            Route::delete('{device}', [NotificationDeviceController::class, 'destroy'])->name('destroy');
+        });
     });
 
     /*
@@ -250,6 +267,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
     Route::prefix('notifications')->name('api.notifications.')->group(function (): void {
         Route::get('/', [NotificationController::class, 'index'])->name('index');
         Route::get('unread-count', [NotificationController::class, 'unreadCount'])->name('unread-count');
+        Route::get('{notification}', [NotificationController::class, 'show'])->name('show');
         Route::post('read-all', [NotificationController::class, 'readAll'])->name('read-all');
         Route::post('{notification}/read', [NotificationController::class, 'read'])->name('read');
         Route::post('{notification}/unread', [NotificationController::class, 'unread'])->name('unread');
@@ -332,6 +350,40 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('audit-logs', [AuditLogController::class, 'index'])->middleware('permission:audit.view')->name('audit.index');
         Route::get('audit-logs/actions', [AuditLogController::class, 'actions'])->middleware('permission:audit.view')->name('audit.actions');
         Route::get('audit-logs/{auditLog}', [AuditLogController::class, 'show'])->middleware('permission:audit.view')->name('audit.show');
+
+        /*
+         * Platform announcements. The only surface that can write a notification
+         * to every merchant at once, so it is doubly gated: platform operator
+         * plus an explicit notifications permission. `audience-count` and
+         * `preview` precede the bound `{campaign}` routes so they are never
+         * parsed as an id. Merchants have no route into this group at all.
+         */
+        Route::prefix('notification-campaigns')->name('notification-campaigns.')->group(function (): void {
+            Route::get('/', [NotificationCampaignController::class, 'index'])
+                ->middleware('permission:notifications.view')->name('index');
+            Route::post('/', [NotificationCampaignController::class, 'store'])
+                ->middleware('permission:notifications.manage')->name('store');
+            Route::post('preview', [NotificationCampaignController::class, 'preview'])
+                ->middleware('permission:notifications.view')->name('preview');
+            Route::post('audience-count', [NotificationCampaignController::class, 'audienceCount'])
+                ->middleware('permission:notifications.view')->name('audience-count');
+            Route::get('{campaign}', [NotificationCampaignController::class, 'show'])
+                ->middleware('permission:notifications.view')->name('show');
+            Route::patch('{campaign}', [NotificationCampaignController::class, 'update'])
+                ->middleware('permission:notifications.manage')->name('update');
+            Route::delete('{campaign}', [NotificationCampaignController::class, 'destroy'])
+                ->middleware('permission:notifications.manage')->name('destroy');
+            Route::post('{campaign}/schedule', [NotificationCampaignController::class, 'schedule'])
+                ->middleware('permission:notifications.manage')->name('schedule');
+            Route::post('{campaign}/publish', [NotificationCampaignController::class, 'publish'])
+                ->middleware('permission:notifications.manage')->name('publish');
+            Route::post('{campaign}/cancel', [NotificationCampaignController::class, 'cancel'])
+                ->middleware('permission:notifications.manage')->name('cancel');
+            Route::get('{campaign}/recipients', [NotificationCampaignController::class, 'recipients'])
+                ->middleware('permission:notifications.view')->name('recipients');
+            Route::get('{campaign}/stats', [NotificationCampaignController::class, 'stats'])
+                ->middleware('permission:notifications.view')->name('stats');
+        });
 
         /*
          * Marketing administration: pricing, FAQ, waitlist and contact inbox.

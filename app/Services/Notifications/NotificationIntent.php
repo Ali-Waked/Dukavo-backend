@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Notifications;
 
+use App\Enums\NotificationPriority;
 use App\Enums\NotificationSeverity;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * What an emitter wants to notify about.
@@ -30,6 +32,9 @@ final readonly class NotificationIntent
         public ?int $actorId = null,
         public ?NotificationSeverity $severity = null,
         public ?array $recipientIds = null,
+        public ?int $storeId = null,
+        public ?NotificationPriority $priority = null,
+        public ?Model $related = null,
     ) {}
 
     /**

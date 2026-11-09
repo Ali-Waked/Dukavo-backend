@@ -15,12 +15,14 @@ namespace App\Enums;
 enum NotificationChannel: string
 {
     case Mail = 'mail';
+    case Push = 'push';
     case WhatsApp = 'whatsapp';
 
     public function label(): string
     {
         return match ($this) {
             self::Mail => 'Email',
+            self::Push => 'Push',
             self::WhatsApp => 'WhatsApp',
         };
     }
@@ -35,6 +37,7 @@ enum NotificationChannel: string
     {
         return match ($this) {
             self::Mail => 'email',
+            self::Push => 'push',
             self::WhatsApp => 'whatsapp',
         };
     }
@@ -47,6 +50,7 @@ enum NotificationChannel: string
     {
         return match ($this) {
             self::Mail => 'notifications-mail',
+            self::Push => 'notifications-push',
             self::WhatsApp => 'notifications-whatsapp',
         };
     }

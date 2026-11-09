@@ -26,6 +26,7 @@ final class IndexNotificationsRequest extends ApiRequest
             'status' => ['sometimes', 'string', Rule::in(['all', 'unread', 'read'])],
             'category' => ['sometimes', 'string', 'max:60'],
             'severity' => ['sometimes', Rule::enum(NotificationSeverity::class)],
+            'scope' => ['sometimes', 'string', Rule::in(['all', 'platform', 'tenant'])],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:'.self::MAX_PER_PAGE],
         ];
     }
@@ -47,5 +48,12 @@ final class IndexNotificationsRequest extends ApiRequest
         $severity = $this->input('severity');
 
         return is_string($severity) && $severity !== '' && $severity !== 'all' ? $severity : null;
+    }
+
+    public function scope(): ?string
+    {
+        $scope = $this->input('scope');
+
+        return is_string($scope) && in_array($scope, ['platform', 'tenant'], true) ? $scope : null;
     }
 }

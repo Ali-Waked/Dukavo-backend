@@ -8,6 +8,9 @@ use App\Enums\AuditAction;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Emails\AccountEmailService;
+use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Notifications\NotificationEventCatalog;
+use App\Services\Notifications\NotificationIntent;
 use App\Services\Users\UserService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
@@ -31,6 +34,7 @@ class ProfileService
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly AccountEmailService $accountEmails,
+        private readonly NotificationDispatcher $notifications,
     ) {}
 
     /**
@@ -127,6 +131,16 @@ class ProfileService
             template: 'password_changed',
             actionUrl: '/settings/security',
         );
+
+        $tenant = $user->tenants()->orderBy('tenants.id')->first();
+
+        $this->notifications->dispatch(new NotificationIntent(
+            eventKey: NotificationEventCatalog::TENANT_SECURITY_PASSWORD_RESET,
+            tenantId: $tenant?->getKey(),
+            dedupeKey: 'security.password.changed:'.$user->getKey().':'.now()->timestamp,
+            actionUrl: '/settings/security',
+            recipientIds: [(int) $user->getKey()],
+        ));
     }
 
     /**

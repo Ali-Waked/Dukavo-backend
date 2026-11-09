@@ -9,6 +9,7 @@ use App\Events\Automation\InventoryLowStock;
 use App\Events\Automation\OrderCreated;
 use App\Events\Automation\OrderStatusChanged;
 use App\Events\Automation\RecoveryOpportunityDetected;
+use App\Listeners\NotifyPasswordReset;
 use App\Listeners\RunAutomationRules;
 use App\Models\AiAction;
 use App\Models\AutomationRule;
@@ -24,6 +25,7 @@ use App\Models\CustomerMemory;
 use App\Models\CustomerSummary;
 use App\Models\FaqEntry;
 use App\Models\Newsletter;
+use App\Models\NotificationCampaign;
 use App\Models\Order;
 use App\Models\PricingPlan;
 use App\Models\Product;
@@ -65,8 +67,11 @@ use App\Services\Currency\Contracts\ExchangeRateProvider;
 use App\Services\Currency\CurrencyCatalog;
 use App\Services\Currency\Providers\OpenExchangeRateProvider;
 use App\Services\Notifications\NotificationEventCatalog;
+use App\Services\Notifications\Push\Contracts\PushTransport;
+use App\Services\Notifications\Push\FirebasePushTransport;
 use App\Services\Recovery\RecoveryService;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -112,6 +117,10 @@ class AppServiceProvider extends ServiceProvider
         // The event catalogue is immutable, so it is built once and shared
         // rather than rebuilt on every resolve by the dispatcher and settings.
         $this->app->singleton(NotificationEventCatalog::class);
+
+        // Push is reached only through this contract. Tests bind a recorder;
+        // production uses the Firebase Admin SDK when credentials are present.
+        $this->app->singleton(PushTransport::class, FirebasePushTransport::class);
 
         // Provider adapters are built only through this factory, so the
         // registry can support more than one backend without any caller
@@ -241,6 +250,10 @@ class AppServiceProvider extends ServiceProvider
             Event::listen($event, RunAutomationRules::class);
         }
 
+        // A completed password reset is a security fact the account holder
+        // must be able to see even if the reset email was deleted.
+        Event::listen(PasswordReset::class, NotifyPasswordReset::class);
+
         // A Super Admin administers the platform itself, so every ability is
         // granted. Tenant isolation still applies through the model scopes —
         // platform operators must still resolve a tenant to read tenant data.
@@ -277,6 +290,20 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('ai', fn (Request $request): Limit => Limit::perMinute((int) config('ai.transport.rate_per_minute', 20))
             ->by('ai|'.($request->user()?->getKey() ?? $request->ip())));
 
+        // Device registration is called on every app boot and token refresh.
+        // The limit stops a runaway client from churning rows while leaving
+        // room for normal foreground/background transitions.
+        RateLimiter::for('notification-devices', fn (Request $request): Limit => Limit::perMinute(30)
+            ->by('notification-devices|'.($request->user()?->getKey() ?? $request->ip())));
+
+        // Campaign dispatch paces provider traffic independently of the queue
+        // worker count, so scaling workers does not multiply the send rate.
+        // The same limiter is consulted by the queue middleware, which passes
+        // the job rather than an HTTP request, so the subject is not typed.
+        RateLimiter::for('notification-campaigns', fn (mixed $subject = null): Limit => Limit::perMinute(
+            (int) config('dukavo.notifications.broadcast.per_minute', 600),
+        )->by('notification-campaigns'));
+
         // Public checkout writes real orders and reserves real stock. Keying the
         // limit on IP plus the store slug stops one client from emptying a
         // shopfront while still allowing shared NATs to browse and order.
@@ -308,6 +335,7 @@ class AppServiceProvider extends ServiceProvider
             'contact_message' => ContactMessage::class,
             'content_page' => ContentPage::class,
             'newsletter' => Newsletter::class,
+            'notification_campaign' => NotificationCampaign::class,
             'role' => Role::class,
             'ai_action' => AiAction::class,
             'automation_rule' => AutomationRule::class,

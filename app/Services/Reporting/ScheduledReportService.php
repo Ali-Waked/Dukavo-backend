@@ -73,7 +73,10 @@ final class ScheduledReportService
      */
     public function build(Tenant $tenant, string $period, ?CarbonImmutable $now = null): array
     {
-        $now ??= CarbonImmutable::now();
+        // The report window follows the merchant's own calendar, not the
+        // server's. A workspace in Riyadh must not have its "yesterday" cut off
+        // three hours early because the queue runs in UTC.
+        $now ??= CarbonImmutable::now($tenant->timezone ?: (string) config('app.timezone', 'UTC'));
         [$from, $until] = $this->bounds($period, $now);
 
         $store = Store::query()

@@ -34,6 +34,19 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    /*
+     * Real-time channel authentication.
+     *
+     * The framework's default auth route runs on the `web` guard, which reads a
+     * session cookie. The SPA authenticates with a Sanctum bearer token, so the
+     * route is re-registered on the API stack and authenticated explicitly.
+     * `web` is omitted deliberately: keeping it would let a cookie session
+     * subscribe but not a token, and the two would drift.
+     */
+    ->withBroadcasting(
+        __DIR__.'/../routes/channels.php',
+        ['middleware' => ['api', 'auth:sanctum', 'active']],
+    )
     ->withMiddleware(function (Middleware $middleware): void {
         // This application only serves JSON to the Vue SPA, so unauthenticated
         // requests get a 401 response instead of a redirect to a "login" route.

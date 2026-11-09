@@ -31,6 +31,10 @@ enum AuditAction: string
     case ConversationStatusChanged = 'conversation_status_changed';
     case ConversationMessageSent = 'conversation_message_sent';
     case ConversationNoteAdded = 'conversation_note_added';
+    case NotificationCampaignCreated = 'notification_campaign_created';
+    case NotificationCampaignUpdated = 'notification_campaign_updated';
+    case NotificationCampaignPublished = 'notification_campaign_published';
+    case NotificationCampaignCancelled = 'notification_campaign_cancelled';
 
     public function label(): string
     {
@@ -56,6 +60,10 @@ enum AuditAction: string
             self::ConversationStatusChanged => 'Conversation status changed',
             self::ConversationMessageSent => 'Conversation message sent',
             self::ConversationNoteAdded => 'Conversation note added',
+            self::NotificationCampaignCreated => 'Notification campaign created',
+            self::NotificationCampaignUpdated => 'Notification campaign updated',
+            self::NotificationCampaignPublished => 'Notification campaign published',
+            self::NotificationCampaignCancelled => 'Notification campaign cancelled',
         };
     }
 }

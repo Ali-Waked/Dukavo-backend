@@ -59,6 +59,21 @@ class NotificationCenterTest extends TestCase
             ->assertJsonPath('data.count', 1);
     }
 
+    public function test_a_single_notification_can_be_fetched_for_a_deep_link(): void
+    {
+        $mine = $this->notify($this->user);
+        $theirs = $this->notify($this->other);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/notifications/{$mine->getKey()}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $mine->getKey());
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/notifications/{$theirs->getKey()}")
+            ->assertNotFound();
+    }
+
     public function test_a_notification_can_be_marked_read(): void
     {
         $notification = $this->notify($this->user);

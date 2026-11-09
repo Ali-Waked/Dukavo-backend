@@ -50,9 +50,32 @@ class User extends Authenticatable implements MustVerifyEmail
      * @var array<string, list<string>>
      */
     public const NOTIFICATION_CHANNELS = [
-        'email' => ['order_updates', 'low_stock', 'new_messages', 'conversation_assignments', 'delivery_failures', 'approvals', 'weekly_summary', 'product_news'],
+        'email' => [
+            'order_updates', 'low_stock', 'new_messages', 'conversation_assignments',
+            'delivery_failures', 'approvals', 'weekly_summary', 'product_news',
+            'team_activity', 'security_alerts',
+        ],
+        'push' => [
+            'order_updates', 'low_stock', 'new_messages', 'conversation_assignments',
+            'delivery_failures', 'approvals', 'weekly_summary', 'product_news',
+            'team_activity', 'security_alerts',
+        ],
+        'in_app' => [
+            'order_updates', 'low_stock', 'new_messages', 'conversation_assignments',
+            'delivery_failures', 'approvals', 'weekly_summary', 'product_news',
+            'team_activity', 'security_alerts',
+        ],
         'whatsapp' => ['order_updates', 'low_stock', 'new_messages', 'conversation_assignments', 'delivery_failures'],
     ];
+
+    /**
+     * Categories a user may never switch off.
+     *
+     * A security notice is part of the account contract, not marketing: hiding
+     * the switch is not enforcement, so the backend forces these on even if a
+     * stored payload says otherwise.
+     */
+    public const MANDATORY_NOTIFICATION_EVENTS = ['security_alerts'];
 
     protected function casts(): array
     {
@@ -90,7 +113,9 @@ class User extends Authenticatable implements MustVerifyEmail
 
         foreach (self::NOTIFICATION_CHANNELS as $channel => $events) {
             foreach ($events as $event) {
-                $resolved[$channel][$event] = (bool) ($stored[$channel][$event] ?? $defaults[$channel][$event]);
+                $resolved[$channel][$event] = in_array($event, self::MANDATORY_NOTIFICATION_EVENTS, true)
+                    ? true
+                    : (bool) ($stored[$channel][$event] ?? $defaults[$channel][$event]);
             }
         }
 
@@ -118,6 +143,35 @@ class User extends Authenticatable implements MustVerifyEmail
                 'approvals' => false,
                 'weekly_summary' => true,
                 'product_news' => false,
+                'team_activity' => false,
+                'security_alerts' => true,
+            ],
+            'push' => [
+                'order_updates' => true,
+                'low_stock' => true,
+                'new_messages' => true,
+                'conversation_assignments' => true,
+                'delivery_failures' => true,
+                'approvals' => true,
+                'weekly_summary' => true,
+                'product_news' => false,
+                'team_activity' => true,
+                'security_alerts' => true,
+            ],
+            'in_app' => [
+                'order_updates' => true,
+                'low_stock' => true,
+                'new_messages' => true,
+                'conversation_assignments' => true,
+                'delivery_failures' => true,
+                'approvals' => true,
+                'weekly_summary' => true,
+                // Marketing is opt-in on every channel, including in-app.
+                // Defaulting it on would put a merchant in an audience they
+                // never agreed to just because they opened an account.
+                'product_news' => false,
+                'team_activity' => true,
+                'security_alerts' => true,
             ],
             'whatsapp' => [
                 'order_updates' => true,
@@ -212,6 +266,16 @@ class User extends Authenticatable implements MustVerifyEmail
     public function notifications(): MorphMany
     {
         return $this->morphMany(Notification::class, 'notifiable');
+    }
+
+    /**
+     * Push destinations registered by this account.
+     *
+     * @return HasMany<NotificationDevice, $this>
+     */
+    public function notificationDevices(): HasMany
+    {
+        return $this->hasMany(NotificationDevice::class);
     }
 
     /**

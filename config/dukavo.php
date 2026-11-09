@@ -193,6 +193,9 @@ return [
             'mail' => [
                 'enabled' => (bool) env('DUKAVO_NOTIFICATION_MAIL', true),
             ],
+            'push' => [
+                'enabled' => (bool) env('DUKAVO_NOTIFICATION_PUSH', false),
+            ],
             'whatsapp' => [
                 'enabled' => (bool) env('DUKAVO_NOTIFICATION_WHATSAPP', false),
                 'template' => env('DUKAVO_NOTIFICATION_WHATSAPP_TEMPLATE'),
@@ -205,6 +208,27 @@ return [
         'retry' => [
             'times' => (int) env('DUKAVO_NOTIFICATION_RETRY_TIMES', 3),
             'backoff' => [60, 300],
+        ],
+
+        /*
+         * How long a notification stays in the in-app centre. Archived rows are
+         * removed first; read rows then age out. Unread operational alerts are
+         * kept for the longer window so a merchant returning from holiday does
+         * not lose an unpaid order or an out-of-stock warning.
+         */
+        'retention' => [
+            'read_days' => (int) env('DUKAVO_NOTIFICATION_RETENTION_READ_DAYS', 180),
+            'archived_days' => (int) env('DUKAVO_NOTIFICATION_RETENTION_ARCHIVED_DAYS', 30),
+            'device_days' => (int) env('DUKAVO_NOTIFICATION_DEVICE_RETENTION_DAYS', 180),
+        ],
+
+        /*
+         * Large platform broadcasts are paced so a single campaign cannot
+         * exhaust the queue or trip Firebase rate limits.
+         */
+        'broadcast' => [
+            'chunk_size' => (int) env('DUKAVO_NOTIFICATION_BROADCAST_CHUNK', 250),
+            'per_minute' => (int) env('DUKAVO_NOTIFICATION_BROADCAST_PER_MINUTE', 600),
         ],
     ],
 

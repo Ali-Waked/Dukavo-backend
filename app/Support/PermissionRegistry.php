@@ -107,6 +107,10 @@ final class PermissionRegistry
         'audit' => [
             'view' => 'Review the audit log',
         ],
+        'notifications' => [
+            'view' => 'View platform notification campaigns and delivery statistics',
+            'manage' => 'Create, schedule, publish and cancel platform notification campaigns',
+        ],
     ];
 
     /**
@@ -188,7 +192,7 @@ final class PermissionRegistry
         if ($scope === RoleScope::Platform) {
             return $slug === 'super-admin'
                 ? self::slugs()
-                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use'];
+                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use', 'notifications.view'];
         }
 
         return match ($slug) {

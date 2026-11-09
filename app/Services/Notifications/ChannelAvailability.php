@@ -32,6 +32,7 @@ final class ChannelAvailability
             NotificationChannel::Mail => config('dukavo.notifications.channels.mail.enabled', true)
                 ? null
                 : 'mail_disabled',
+            NotificationChannel::Push => $this->pushReason(),
             NotificationChannel::WhatsApp => $this->whatsappReason(),
         };
     }
@@ -44,7 +45,15 @@ final class ChannelAvailability
      */
     public function summary(): array
     {
-        $summary = [];
+        $summary = [
+            // In-app is the notification row itself. It has no provider to
+            // configure and is always available, but it still has switches.
+            'in_app' => [
+                'available' => true,
+                'reason' => null,
+                'label' => 'In-app',
+            ],
+        ];
 
         foreach (NotificationChannel::cases() as $channel) {
             $summary[$channel->preferenceKey()] = [
@@ -55,6 +64,23 @@ final class ChannelAvailability
         }
 
         return $summary;
+    }
+
+    private function pushReason(): ?string
+    {
+        if (! config('dukavo.notifications.channels.push.enabled', false)) {
+            return 'push_disabled';
+        }
+
+        $project = config('firebase.project_id');
+        $hasCredentials = filled(config('firebase.credentials'))
+            || filled(config('firebase.credentials_json'));
+
+        if (blank($project) || ! $hasCredentials) {
+            return 'push_credentials_missing';
+        }
+
+        return null;
     }
 
     private function whatsappReason(): ?string

@@ -11,6 +11,9 @@ use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\Emails\AccountEmailService;
+use App\Services\Notifications\NotificationDispatcher;
+use App\Services\Notifications\NotificationEventCatalog;
+use App\Services\Notifications\NotificationIntent;
 use App\Support\PermissionRegistry;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -36,6 +39,7 @@ class RoleService
     public function __construct(
         private readonly PermissionService $permissions,
         private readonly AccountEmailService $accountEmails,
+        private readonly NotificationDispatcher $notifications,
     ) {}
 
     /**
@@ -152,6 +156,22 @@ class RoleService
 
         $this->permissions->flushRoleCatalogue();
 
+        // Only a workspace role has a tenant audience; a platform role is
+        // managed by operators and already covered by the audit log.
+        if ($tenant instanceof Tenant) {
+            $this->notifications->dispatch(new NotificationIntent(
+                eventKey: NotificationEventCatalog::TENANT_TEAM_PERMISSION_CHANGED,
+                tenantId: $tenant->getKey(),
+                dedupeKey: 'team.role.permissions:'.$role->getKey().':'.now()->timestamp,
+                data: [
+                    'role' => $role->name,
+                    'actor' => $actor?->name ?? (string) config('dukavo.name', 'Dukavo'),
+                ],
+                actionUrl: '/team/roles',
+                actorId: $actor?->getKey(),
+            ));
+        }
+
         return $role;
     }
 
@@ -224,6 +244,21 @@ class RoleService
 
         if ($assignment->wasRecentlyCreated) {
             $this->announceRoleChange($user, $role, $tenant, granted: true);
+
+            if ($tenant instanceof Tenant) {
+                $this->notifications->dispatch(new NotificationIntent(
+                    eventKey: NotificationEventCatalog::TENANT_TEAM_ROLE_CHANGED,
+                    tenantId: $tenant->getKey(),
+                    dedupeKey: 'team.role.changed:'.$assignment->getKey(),
+                    data: [
+                        'member' => $user->name,
+                        'role' => $role->name,
+                        'actor' => auth()->user()?->name ?? (string) config('dukavo.name', 'Dukavo'),
+                    ],
+                    actionUrl: '/team',
+                    actorId: auth()->id(),
+                ));
+            }
         }
     }
 
