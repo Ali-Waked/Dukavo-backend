@@ -2,6 +2,8 @@
 
 **Status:** implementation and integration reference, 9 November 2026
 **Owners:** backend (`backend/`), web (`frontend/`), mobile (`mobile/`)
+**Companion documents:** [DUKAVO_NOTIFICATION_MASTER_AUDIT.md](DUKAVO_NOTIFICATION_MASTER_AUDIT.md),
+[DUKAVO_NOTIFICATION_API.md](DUKAVO_NOTIFICATION_API.md)
 
 > MySQL is the source of truth for every notification. Laravel Reverb carries
 > real-time web events, and Firebase Cloud Messaging (FCM) is a push delivery
@@ -11,7 +13,7 @@
 > **Verification caveat:** the FCM, Reverb, SMTP and WhatsApp transports are
 > implemented and covered by tests with fake transports, but they are **not
 > verified against live services in this environment**. See
-> [Verification status](#verification-status) before describing any of them as
+> [Verification status](#15-verification-status) before describing any of them as
 > operational.
 
 ---
@@ -32,6 +34,13 @@ One notification engine serves all three clients:
   opt-in marketing consent.
 - **Platform broadcasts** for Dukavo staff only, with scheduling, a recipient
   ledger, delivery reporting and audit logs.
+- **Platform email control** for the plain-text subject, heading and intro of
+  every template, with EN/AR preview, test send, optional-template switches and
+  restore-to-default. The branded layout stays under application control.
+- **Delivery monitoring** across notification, recipient, tenant, channel,
+  provider, status, attempts and errors, with a narrow audited retry.
+- **Marketing consent** recorded as history, with hashed expiring unsubscribe
+  links and mandatory security notices that can never be switched off.
 
 Controllers do not build notifications. A domain service raises a
 `NotificationIntent` after its own state change commits, and the central
@@ -79,6 +88,10 @@ resolved user. Campaign delivery jobs are batched on the
 | `NotificationDispatcher` | Single dispatch entry point. Enforces preferences, claims idempotency, writes the notification and delivery rows, and defers broadcasts/jobs until commit. |
 | `ChannelAvailability` | Reports whether mail/push/WhatsApp can actually send. Used by the dispatcher, campaign service and settings endpoint. |
 | `NotificationCampaignService` | Platform broadcast lifecycle, audience resolution, copy preview and audit. |
+| `EmailTemplateCatalog` | The complete email-template catalogue: account mail, catalogue events, optional flags and approved placeholder lists. |
+| `EmailTemplateService` | Merges stored plain-text overrides over shipped copy, validates placeholders, resolves subjects, restores defaults and audits changes. |
+| `UnsubscribeService` | Issues hashed single-purpose marketing unsubscribe tokens, applies opt-outs and records consent history. |
+| `NotificationDeliveryRetryService` | Decides whether one failed delivery may be retried and dispatches exactly one job after commit. |
 | `SendNotificationEmail` / `SendNotificationPush` / `SendNotificationWhatsApp` | Per-delivery queue jobs. |
 | `NotificationCreated` / `NotificationStateChanged` | After-commit Reverb events. |
 | `notifications:campaigns` | Publishes due campaigns and completes finished ones every minute. |
@@ -100,6 +113,10 @@ resolved user. Campaign delivery jobs are batched on the
 6. In-app opt-out is enforced server-side by creating the authoritative row
    with `archived_at = now()`. The item is hidden from the bell but retained for
    audit and for any outbound channel the user still allows.
+7. A disabled optional email template records a skip instead of queueing mail;
+   mandatory account/security mail cannot be disabled.
+8. Marketing delivery is consent-gated per channel at send time. `product_news`
+   is opt-in everywhere and a campaign audience does not override consent.
 
 ### 3.2 In-app vs outbound channels
 
@@ -176,6 +193,28 @@ an audience is resolved twice.
 Existing idempotency ledger keyed by event + recipient (+ related scope). It
 stores the last notification time and count, which implements one-shot and
 cooldown semantics atomically under a row lock and unique constraint.
+
+### 4.7 `notification_email_templates` (`2026_11_09_140000`)
+
+One row per customised template key. `enabled` applies only to optional
+templates and defaults to true. `subject`, `heading` and `intro` are nullable
+JSON objects keyed by `en`/`ar`; a missing or empty locale falls back to the
+shipped copy. `updated_by` records the operator. The catalogue remains in code,
+so a code deploy can add a template without a data migration.
+
+### 4.8 `notification_unsubscribe_tokens` (`2026_11_09_140001`)
+
+Hashed single-purpose marketing token: `user_id`, `channel`, `category`
+(`product_news`), `token_hash`, `expires_at`, `used_at`. The raw token is
+returned once and never stored. Lookups compare the SHA-256 hash, so a database
+leak does not hand an attacker working links.
+
+### 4.9 `notification_consents` (`2026_11_09_140002`)
+
+Append-only marketing-consent history: user, email, channel, category,
+`granted`/`revoked`, source (`profile` or `unsubscribe_link`), optional IP,
+user agent and metadata. Mandatory security and account notices are excluded,
+because they are not consent-based.
 
 ---
 
@@ -391,6 +430,71 @@ Audience types:
 
 Platform staff are excluded from campaign audiences even for `all`.
 
+### 6.5 Platform email templates
+
+Every route is behind `platform` middleware and `notifications.view` (read) or
+`notifications.manage` (write). Full wire shapes are in
+[DUKAVO_NOTIFICATION_API.md](DUKAVO_NOTIFICATION_API.md#6-platform-email-templates).
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/platform/email-templates` | view | Catalogue with shipped copy, overrides and effective copy. |
+| `GET` | `/platform/email-templates/{key}` | view | One template. |
+| `PATCH` | `/platform/email-templates/{key}` | manage | Store plain-text subject/heading/intro and optional enabled flag. |
+| `POST` | `/platform/email-templates/{key}/preview` | view | Render EN or AR HTML/text with sample data. |
+| `POST` | `/platform/email-templates/{key}/test` | manage | Send a real test through the configured mail transport. |
+| `POST` | `/platform/email-templates/{key}/restore` | manage | Delete the override and use the shipped copy. |
+
+Operators may change only plain text, never HTML. Only catalogue-approved
+`{placeholders}` are accepted. Subjects/headings are capped at 180 characters
+and intros at 2000. Optional templates may be disabled; mandatory account,
+security and operational mail cannot. Update and restore are audited. A test
+response always reports `delivery_confirmed: false`, because transport
+acceptance is not a delivery receipt.
+
+### 6.6 Platform delivery monitoring
+
+| Method | Path | Permission | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/platform/notification-deliveries` | view | Paginated delivery ledger. |
+| `GET` | `/platform/notification-deliveries/{id}` | view | One delivery. |
+| `POST` | `/platform/notification-deliveries/{id}/retry` | manage | Retry one eligible failed delivery. |
+
+Filters: `status`, `channel`, `event_key`, `notification_id`, `tenant_id`,
+`search` (recipient reference, event or error), `from`, `to`, `per_page`.
+Response rows expose the recipient display name and masked destination, the
+channel/provider/status/attempts/error and timestamps. The private notification
+body and `provider_payload` are deliberately absent.
+
+`retryable` is true only for a failed, non-permanent mail or push delivery whose
+template still exists. Retry resets the row to `queued` and dispatches one job
+after commit; a second click is refused because the row is no longer failed.
+Refusal codes are `delivery_not_retryable`, `delivery_permanent_failure`,
+`delivery_channel_not_retryable` and `delivery_template_missing`.
+
+### 6.7 Public unsubscribe
+
+The only anonymous notification mutation. The token is the authority; no
+session, Sanctum token or tenant header is required. Throttled 10/min per IP.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/unsubscribe/{token}` | Report what the link would do; changes nothing. |
+| `POST` | `/unsubscribe/{token}` | Apply the `product_news` opt-out; RFC 8058 one-click target. |
+
+Tokens are hashed at rest, scoped to user + channel + `product_news`, and expire
+after `DUKAVO_EMAIL_UNSUBSCRIBE_TTL_DAYS` (default 90). `GET` returns `valid`,
+`already_used`, `expired`, channel, category, masked email and expiry. Unknown
+or expired tokens return `410`. A replayed `POST` on an already-used token is
+idempotent. Only the optional marketing category is affected; security, account
+and operational mail cannot be disabled here. The action writes an immutable
+`notification_consents` row.
+
+Marketing email advertises `List-Unsubscribe` and
+`List-Unsubscribe-Post: List-Unsubscribe=One-Click` headers. The frontend serves
+both `/unsubscribe?token=...` (the link placed in email) and
+`/unsubscribe/{token}`.
+
 ---
 
 ## 7. Reverb and the Vue client
@@ -430,6 +534,11 @@ personal notification content must never be broadcast to them.
 - Required components: `NotificationBell`, `UnreadCountBadge`,
   `NotificationDropdown`, `NotificationCenter`, `NotificationList`,
   `NotificationItem`, `NotificationFilters`, `NotificationSettings`.
+- Platform pages: `NotificationCampaignsPage`, `EmailTemplatesPage`,
+  `NotificationDeliveryMonitorPage`. Email previews render inside a sandboxed
+  iframe; operator input is plain text only.
+- Public marketing page: `UnsubscribePage` at `/unsubscribe` and
+  `/unsubscribe/:token`, usable signed out.
 - Navigation is centralised in `src/utils/notificationNavigation.ts` and
   accepts only same-origin absolute URLs or in-app paths; protocol-relative,
   `javascript:` and external URLs are refused.
@@ -659,6 +768,26 @@ delivery still requires the per-event `push` preference and an active device.
 When Firebase is globally unconfigured, push delivery rows are omitted rather
 than recorded as permanent skips.
 
+### 10.1 Marketing consent and unsubscribe history
+
+A marketing consent change is recorded twice in effect:
+
+1. The resolved preference (`product_news` for that channel) is stored on the
+   user, which is what delivery checks at send time.
+2. An immutable `notification_consents` row records `granted` or `revoked`, the
+   channel, category, source and optional IP/user agent.
+
+Profile changes use source `profile`. Link opt-outs use source
+`unsubscribe_link`. Mandatory `security_alerts` and account mail are excluded
+from this history because they are not consent-based.
+
+Unsubscribe links are hashed single-purpose tokens scoped to one user, one
+channel and `product_news`, and expire after
+`DUKAVO_EMAIL_UNSUBSCRIBE_TTL_DAYS` (default 90). Opening the link changes
+nothing; confirming it is idempotent; an unknown or expired link returns `410`.
+The page masks the address and states plainly that order, account and security
+mail are unaffected.
+
 ---
 
 ## 11. Platform campaigns
@@ -779,11 +908,25 @@ Unread rows are never deleted by age. Use `--dry-run` to inspect counts first.
   backend still retains the record, and outbound channels obey the same stored
   preference. Marketing consent is checked per channel at send time.
 - **Mandatory security:** `security_alerts` is forced on by the backend.
-- **Rate limiting:** device registration is limited per account; campaign jobs
-  are limited and batched; auth/campaign routes are behind normal API and
-  permission middleware.
-- **Audit:** campaign create/update/schedule/publish/cancel are recorded through
-  `AuditLogger`. Sensitive payloads are not logged.
+- **Email template safety:** operators submit plain text only; the branded
+  layout stays in code, only catalogue-approved placeholders are accepted, and
+  previews render in a sandboxed iframe. Mandatory account/security templates
+  cannot be disabled.
+- **Unsubscribe token safety:** marketing links are SHA-256 hashed at rest,
+  single-purpose, scoped to user + channel + `product_news`, expiring and rate
+  limited. `GET` is read-only and returns a masked address; `POST` is
+  idempotent; unknown/expired links return `410`.
+- **Delivery-monitor privacy:** operators see channel/provider/status and a
+  masked recipient reference, never the private notification body or raw
+  provider payload. Retry is limited to a recorded transient mail/push failure.
+- **Consent history:** marketing consent changes are append-only and exclude
+  mandatory security notices.
+- **Rate limiting:** device registration is limited per account; unsubscribe is
+  limited per IP; campaign jobs are limited and batched; auth/campaign routes are
+  behind normal API and permission middleware.
+- **Audit:** campaign create/update/schedule/publish/cancel, email template
+  update/restore and delivery retry are recorded through `AuditLogger`.
+  Sensitive payloads are not logged.
 - **Idempotency:** event claims, campaign recipient uniqueness, delivery
   uniqueness, campaign notification dedupe keys and idempotency keys.
 
@@ -840,8 +983,13 @@ Queue workers need `DUKAVO_NOTIFICATION_PUSH`, Firebase credentials and
 - `php artisan notifications:campaigns` should publish due campaigns and
   complete finished ones.
 - `php artisan queue:failed` should be empty after a deploy smoke test.
-- `GET /api/v1/notifications/channels` should show `push.available = true` only
-  when FCM is actually configured.
+- `GET /api/v1/profile/notifications/channels` should show `push.available =
+  true` only when FCM is actually configured.
+- `GET /api/v1/platform/email-templates` should list every catalogue template;
+  a test send reports `delivery_confirmed: false` and proves only that the mail
+  transport accepted the message.
+- `GET /api/v1/platform/notification-deliveries?status=failed` should show a
+  recorded error and timestamps; retry is offered only when `retryable` is true.
 - A browser with Reverb configured should show a connected socket; without a
   key it should keep working through polling without claiming realtime.
 
@@ -851,18 +999,19 @@ Queue workers need `DUKAVO_NOTIFICATION_PUSH`, Firebase credentials and
 
 | Area | Evidence | Status |
 | --- | --- | --- |
-| Backend notification centre, preferences, campaigns, broadcast auth, devices, push, retention | Focused suite: 52 tests / 188 assertions passed | Verified in test environment |
-| Full backend suite | 729 tests / 3918 assertions passed on 2026-11-09 (`php -d memory_limit=1G vendor/bin/phpunit`; the route file exceeds the default 128 MB on this machine) | Verified in test environment |
+| Backend notification centre, preferences, campaigns, broadcast auth, devices, push logic, retention | Focused suite: 128 tests / 1080 assertions passed | Verified in test environment |
+| Email templates, delivery monitoring, unsubscribe/consent | Included in the focused suite: `EmailTemplateAdminTest` 9 tests, `NotificationDeliveryMonitorTest` 8 tests, `NotificationUnsubscribeTest` 6 tests | Verified in test environment |
+| Full backend suite | 752 tests / 4043 assertions passed on 2026-11-09 (`php -d memory_limit=1G vendor/bin/phpunit`; the route file exceeds the default 128 MB on this machine) | Verified in test environment |
 | Vue type-check | `npm run type-check` | Passed |
-| Vue navigation safety | `npm test` (`tests/notificationNavigation.test.ts`); 27 tests passed | Passed |
+| Vue unit tests | `npm test`; 27 tests passed (navigation safety, localized content, avatar crop) | Passed |
 | Flutter static analysis | `flutter analyze lib/features/notifications test/features/notifications` | Passed for notification paths |
-| Flutter notification parsing/deep links | `flutter test test/features/notifications/notification_test.dart`; 6 tests passed in a clean worktree at the notification commit | Passed |
+| Flutter notification parsing/deep links | `flutter test test/features/notifications/notification_test.dart`; 6 tests passed in a clean worktree at the notification commit (`13d4188`) | Passed |
 | Reverb live delivery | No server/key configured; `BROADCAST_CONNECTION=log` | **Not verified** |
 | FCM live delivery | No Firebase project/credentials/device | **Not verified** |
 | SMTP | Tests use array mailer; no live SMTP | **Not verified** |
 | WhatsApp | Disabled by configuration; no approved template/transport | **Not verified** |
 | iOS push | No APNs key/capability in this environment | **Not configured** |
-| Browser/mobile runtime UI | Static analysis and unit tests only | Not manually exercised |
+| Browser/mobile runtime UI | Type-check, static analysis and unit tests only | Not manually exercised |
 
 An integration is only “done” when the code exists **and** the deployment has
 been configured and exercised. Code alone is not proof.
@@ -884,6 +1033,11 @@ been configured and exercised. Code alone is not proof.
 | Scheduled campaign never sends | Scheduler not running, time still in the future, or campaign cancelled | `php artisan schedule:run`; `php artisan notifications:campaigns`; campaign `scheduled_at`. |
 | Notification appears in outbound channels but not the bell | User opted out of in-app; row has `archived_at` | Preference payload; `notifications.archived_at`. |
 | Report values look wrong | Tenant timezone or currency configuration, or missing cost data | Tenant timezone/currency; report period bounds; `cost_coverage` rather than assuming zero. |
+| Email template save fails with unsupported placeholder | Copy contains a `{token}` not in the template’s variable list | Use only the placeholders shown in the editor; unknown tokens are refused. |
+| Optional email never arrives | Template disabled, or the category has no recipient consent | `GET /platform/email-templates/{key}` shows `enabled`; delivery/ledger shows `skipped` and the reason. |
+| Test email “succeeds” but nothing arrives | The configured mail transport accepted it; there is no delivery receipt | Check `MAIL_MAILER`/SMTP logs and the recipient mailbox; `delivery_confirmed` is always false. |
+| Unsubscribe link is invalid or expired | Token copied incompletely, already past `DUKAVO_EMAIL_UNSUBSCRIBE_TTL_DAYS`, or unknown | Open the link in the most recent email; `GET` returns `410` for unknown/expired tokens. |
+| Delivery retry is refused | Row is not failed, failure was permanent, channel is WhatsApp, or template is gone | Inspect `retryable` and the `409` code (`delivery_*`); only transient mail/push failures can retry. |
 | Full test suite dies with memory exhaustion | Default PHP CLI memory limit too low for the route file | `php -d memory_limit=1G artisan test`. |
 | FCM SDK fails to initialise | `ext-sodium` missing or credentials malformed | Install `sodium`; validate the service-account JSON; check worker logs. |
 
@@ -907,3 +1061,10 @@ been configured and exercised. Code alone is not proof.
   `google-services`/APNs configuration and a physical-device test exist.
 - iOS requires manual Xcode capability and APNs configuration outside this
   repository.
+- Email template overrides are plain text only. Operators cannot upload HTML,
+  change the branded layout, or add placeholders outside the catalogue.
+- The unsubscribe scope is intentionally `product_news` per channel. There is
+  no “unsubscribe from everything” link, because security/account mail is
+  mandatory and must keep arriving.
+- Delivery monitoring exposes masked recipient references and provider errors,
+  not private notification bodies; it is an operations screen, not an inbox.
