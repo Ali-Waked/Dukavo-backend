@@ -35,6 +35,9 @@ enum AuditAction: string
     case NotificationCampaignUpdated = 'notification_campaign_updated';
     case NotificationCampaignPublished = 'notification_campaign_published';
     case NotificationCampaignCancelled = 'notification_campaign_cancelled';
+    case EmailTemplateUpdated = 'email_template_updated';
+    case EmailTemplateRestored = 'email_template_restored';
+    case NotificationDeliveryRetried = 'notification_delivery_retried';
 
     public function label(): string
     {
@@ -64,6 +67,9 @@ enum AuditAction: string
             self::NotificationCampaignUpdated => 'Notification campaign updated',
             self::NotificationCampaignPublished => 'Notification campaign published',
             self::NotificationCampaignCancelled => 'Notification campaign cancelled',
+            self::EmailTemplateUpdated => 'Email template updated',
+            self::EmailTemplateRestored => 'Email template restored',
+            self::NotificationDeliveryRetried => 'Notification delivery retried',
         };
     }
 }

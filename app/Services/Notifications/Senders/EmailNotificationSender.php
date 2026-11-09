@@ -9,6 +9,7 @@ use App\Mail\NotificationMail;
 use App\Models\Notification;
 use App\Models\NotificationDelivery;
 use App\Models\User;
+use App\Services\Emails\EmailTemplateService;
 use App\Services\Notifications\ChannelAvailability;
 use App\Services\Notifications\Contracts\NotificationSender;
 use Illuminate\Support\Facades\Mail;
@@ -24,7 +25,10 @@ use Illuminate\Support\Facades\Mail;
  */
 final class EmailNotificationSender implements NotificationSender
 {
-    public function __construct(private readonly ChannelAvailability $availability) {}
+    public function __construct(
+        private readonly ChannelAvailability $availability,
+        private readonly EmailTemplateService $templates,
+    ) {}
 
     public function channel(): NotificationChannel
     {
@@ -63,6 +67,12 @@ final class EmailNotificationSender implements NotificationSender
 
         if (! $notification instanceof Notification) {
             $delivery->markSkipped('notification_missing');
+
+            return;
+        }
+
+        if (! $this->templates->isEnabled($notification->event_key)) {
+            $delivery->markSkipped('template_disabled');
 
             return;
         }

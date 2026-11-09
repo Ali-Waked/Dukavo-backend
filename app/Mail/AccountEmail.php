@@ -6,6 +6,7 @@ namespace App\Mail;
 
 use App\Models\User;
 use App\Services\Emails\EmailContentBuilder;
+use App\Services\Emails\EmailTemplateService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
@@ -42,10 +43,18 @@ class AccountEmail extends Mailable
     public function envelope(): Envelope
     {
         $key = 'email.account.'.$this->template.'_heading';
+        $variables = $this->scalarData();
 
-        $subject = Lang::has($key)
-            ? (string) Lang::get($key, $this->scalarData(), $this->locale)
+        $fallback = Lang::has($key)
+            ? (string) Lang::get($key, $variables, $this->locale)
             : (string) config('dukavo.name', 'Dukavo');
+
+        $subject = app(EmailTemplateService::class)->subject(
+            key: 'account.'.$this->template,
+            locale: $this->locale,
+            variables: $variables,
+            fallback: $fallback,
+        );
 
         return new Envelope(subject: $subject);
     }

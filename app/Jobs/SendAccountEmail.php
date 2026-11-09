@@ -10,6 +10,7 @@ use App\Mail\AccountEmail;
 use App\Models\NotificationDelivery;
 use App\Models\User;
 use App\Services\Emails\EmailFailureClassifier;
+use App\Services\Emails\EmailTemplateService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Mail;
@@ -39,8 +40,10 @@ final class SendAccountEmail implements ShouldQueue
         $this->onQueue(NotificationChannel::Mail->queue());
     }
 
-    public function handle(EmailFailureClassifier $classifier): void
+    public function handle(EmailFailureClassifier $classifier, ?EmailTemplateService $templates = null): void
     {
+        $templates ??= app(EmailTemplateService::class);
+
         $delivery = NotificationDelivery::query()->find($this->deliveryId);
 
         if (! $delivery instanceof NotificationDelivery || $delivery->isTerminal() || $delivery->status === NotificationDeliveryStatus::Skipped) {
@@ -51,6 +54,12 @@ final class SendAccountEmail implements ShouldQueue
 
         if (! $recipient instanceof User || blank($recipient->email)) {
             $delivery->markSkipped('email_missing');
+
+            return;
+        }
+
+        if (is_string($delivery->template) && ! $templates->isEnabled('account.'.$delivery->template)) {
+            $delivery->markSkipped('template_disabled');
 
             return;
         }

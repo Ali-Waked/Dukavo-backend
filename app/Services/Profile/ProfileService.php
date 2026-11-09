@@ -11,6 +11,7 @@ use App\Services\Emails\AccountEmailService;
 use App\Services\Notifications\NotificationDispatcher;
 use App\Services\Notifications\NotificationEventCatalog;
 use App\Services\Notifications\NotificationIntent;
+use App\Services\Notifications\UnsubscribeService;
 use App\Services\Users\UserService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
@@ -35,6 +36,7 @@ class ProfileService
         private readonly AuditLogger $audit,
         private readonly AccountEmailService $accountEmails,
         private readonly NotificationDispatcher $notifications,
+        private readonly UnsubscribeService $consent,
     ) {}
 
     /**
@@ -157,18 +159,40 @@ class ProfileService
     public function updateNotificationPreferences(User $user, array $submitted): User
     {
         $preferences = $user->notification_preferences ?? [];
+        $consentChanges = [];
 
         foreach (User::NOTIFICATION_CHANNELS as $channel => $events) {
             $preferences[$channel] ??= [];
 
             foreach ($events as $event) {
                 if (array_key_exists($channel, $submitted) && is_array($submitted[$channel]) && array_key_exists($event, $submitted[$channel])) {
-                    $preferences[$channel][$event] = (bool) $submitted[$channel][$event];
+                    $newValue = (bool) $submitted[$channel][$event];
+
+                    if ($event === UnsubscribeService::CATEGORY) {
+                        $oldValue = (bool) ($preferences[$channel][$event] ?? false);
+
+                        if ($newValue !== $oldValue) {
+                            $consentChanges[$channel] = $newValue;
+                        }
+                    }
+
+                    $preferences[$channel][$event] = $newValue;
                 }
             }
         }
 
         $user->forceFill(['notification_preferences' => $preferences])->save();
+
+        foreach ($consentChanges as $channel => $granted) {
+            $this->consent->record(
+                user: $user,
+                channel: $channel,
+                category: UnsubscribeService::CATEGORY,
+                action: $granted ? 'granted' : 'revoked',
+                source: 'settings',
+                request: request(),
+            );
+        }
 
         return $user;
     }

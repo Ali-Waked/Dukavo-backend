@@ -256,6 +256,9 @@ return [
         'logo_width' => (int) env('DUKAVO_EMAIL_LOGO_WIDTH', 168),
         'webhook_secret' => env('DUKAVO_EMAIL_WEBHOOK_SECRET'),
         'support_email' => env('DUKAVO_SUPPORT_EMAIL', env('MAIL_FROM_ADDRESS', 'hello@example.com')),
+        // How long a marketing unsubscribe link remains usable. A token is
+        // single-purpose and hashed at rest; zero means it never expires.
+        'unsubscribe_ttl_days' => (int) env('DUKAVO_EMAIL_UNSUBSCRIBE_TTL_DAYS', 90),
     ],
 
     'urls' => [

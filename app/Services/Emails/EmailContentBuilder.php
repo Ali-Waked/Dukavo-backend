@@ -34,13 +34,20 @@ use Throwable;
  */
 final class EmailContentBuilder
 {
-    public function __construct(private readonly CurrencyCatalog $currencies) {}
+    public function __construct(
+        private readonly CurrencyCatalog $currencies,
+        private readonly EmailTemplateService $templates,
+    ) {}
 
     /**
      * @return array<string, mixed>
      */
-    public function build(Notification $notification, User $recipient): array
-    {
+    public function build(
+        Notification $notification,
+        User $recipient,
+        ?string $unsubscribeUrl = null,
+        bool $marketing = false,
+    ): array {
         return $this->buildEvent(
             eventKey: $notification->event_key,
             locale: $this->locale($recipient),
@@ -49,6 +56,8 @@ final class EmailContentBuilder
             severity: $notification->severity,
             tenantId: $notification->tenant_id !== null ? (int) $notification->tenant_id : null,
             title: $notification->title,
+            unsubscribeUrl: $unsubscribeUrl,
+            marketing: $marketing,
         );
     }
 
@@ -64,6 +73,9 @@ final class EmailContentBuilder
         ?NotificationSeverity $severity = null,
         ?int $tenantId = null,
         ?string $title = null,
+        bool $applyOverrides = true,
+        ?string $unsubscribeUrl = null,
+        bool $marketing = false,
     ): array {
         $group = $this->groupFor($eventKey);
 
@@ -79,7 +91,26 @@ final class EmailContentBuilder
 
         $preferenceDriven = $this->isPreferenceDriven($eventKey);
 
-        return $this->presentation($locale, $group, $content, $actionUrl, $severity, $preferenceDriven);
+        $content = $this->presentation($locale, $group, $content, $actionUrl, $severity, $preferenceDriven);
+
+        if ($marketing) {
+            $content['show_unsubscribe'] = true;
+        }
+
+        if ($unsubscribeUrl !== null && $content['show_unsubscribe']) {
+            $content['unsubscribe_url'] = $unsubscribeUrl;
+        }
+
+        if (! $applyOverrides) {
+            return $content;
+        }
+
+        return $this->templates->applyToContent(
+            $eventKey,
+            $locale,
+            $content,
+            $this->variables($data, $title, $content),
+        );
     }
 
     /**
@@ -91,7 +122,7 @@ final class EmailContentBuilder
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    public function buildAccount(string $template, string $locale, array $data = [], ?string $actionUrl = null): array
+    public function buildAccount(string $template, string $locale, array $data = [], ?string $actionUrl = null, bool $applyOverrides = true): array
     {
         $heading = $this->accountHeading($template, $locale, $data);
         $intro = $this->line('account.'.$template.'_intro', $locale, $data);
@@ -141,7 +172,7 @@ final class EmailContentBuilder
             );
         }
 
-        return [
+        $content = [
             'locale' => $locale,
             'dir' => $locale === 'ar' ? 'rtl' : 'ltr',
             'group' => 'account',
@@ -168,6 +199,17 @@ final class EmailContentBuilder
             'security_note' => $securityNote,
             'preheader' => $intro !== '' ? $intro : $heading,
         ];
+
+        if (! $applyOverrides) {
+            return $content;
+        }
+
+        return $this->templates->applyToContent(
+            'account.'.$template,
+            $locale,
+            $content,
+            $this->scalarStrings($data) + ['name' => (string) ($data['name'] ?? '')],
+        );
     }
 
     /**
@@ -903,6 +945,21 @@ final class EmailContentBuilder
         }
 
         return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $content
+     * @return array<string, string>
+     */
+    private function variables(array $data, ?string $title, array $content): array
+    {
+        $variables = $this->scalarStrings($data);
+        $variables['title'] = $title ?? (string) ($content['heading'] ?? '');
+        $variables['body'] = (string) ($content['intro'] ?? ($data['body'] ?? ''));
+        $variables['workspace'] = (string) ($variables['tenant'] ?? ($data['workspace'] ?? ''));
+
+        return $variables;
     }
 
     /**

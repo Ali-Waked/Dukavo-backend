@@ -299,6 +299,12 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('newsletter', fn (Request $request): Limit => Limit::perMinute(5)
             ->by('newsletter|'.$request->ip()));
 
+        // Marketing unsubscribe links are opened by anonymous recipients, so the
+        // limit is IP-scoped. A real recipient clicks once; the cap only stops a
+        // client from probing token values in bulk.
+        RateLimiter::for('unsubscribe', fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('unsubscribe|'.$request->ip()));
+
         // AI endpoints are expensive and identity-bound, so the burst guard is
         // keyed on the authenticated user and, failing that, the client IP.
         RateLimiter::for('ai', fn (Request $request): Limit => Limit::perMinute((int) config('ai.transport.rate_per_minute', 20))

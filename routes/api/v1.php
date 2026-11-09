@@ -52,10 +52,12 @@ use App\Http\Controllers\Api\V1\Platform\AutomationTemplateController as Platfor
 use App\Http\Controllers\Api\V1\Platform\BlogContentImageController;
 use App\Http\Controllers\Api\V1\Platform\ContactMessageController;
 use App\Http\Controllers\Api\V1\Platform\ContentPageController as PlatformContentPageController;
+use App\Http\Controllers\Api\V1\Platform\EmailTemplateController;
 use App\Http\Controllers\Api\V1\Platform\FaqEntryController;
 use App\Http\Controllers\Api\V1\Platform\NewsletterController as PlatformNewsletterController;
 use App\Http\Controllers\Api\V1\Platform\NewsletterSubscriberController;
 use App\Http\Controllers\Api\V1\Platform\NotificationCampaignController;
+use App\Http\Controllers\Api\V1\Platform\NotificationDeliveryController;
 use App\Http\Controllers\Api\V1\Platform\PlatformDashboardController;
 use App\Http\Controllers\Api\V1\Platform\PlatformInsightsController;
 use App\Http\Controllers\Api\V1\Platform\PricingPlanController;
@@ -75,6 +77,7 @@ use App\Http\Controllers\Api\V1\Storefront\ShippingZoneController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCheckoutController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontSettingsController;
 use App\Http\Controllers\Api\V1\TenantSettingsController;
+use App\Http\Controllers\Api\V1\UnsubscribeController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\VoiceMessageController;
 use App\Http\Controllers\Api\V1\WhatsappAccountController;
@@ -151,6 +154,18 @@ Route::prefix('webhooks')->group(function (): void {
     // closed when no secret is configured.
     Route::post('email', EmailWebhookController::class)
         ->name('webhooks.email');
+});
+
+/*
+ * Marketing unsubscribe links. The token is the authority: no session, no
+ * Sanctum, no tenant. `GET` only reports what the link would do; `POST` applies
+ * the opt-out and is also the RFC 8058 one-click target advertised in the
+ * `List-Unsubscribe-Post` header. The named limiter keeps an anonymous client
+ * from probing token values.
+ */
+Route::prefix('unsubscribe')->name('api.unsubscribe.')->middleware('throttle:unsubscribe')->group(function (): void {
+    Route::get('{token}', [UnsubscribeController::class, 'show'])->name('show');
+    Route::post('{token}', [UnsubscribeController::class, 'store'])->name('store');
 });
 
 /*
@@ -386,6 +401,44 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
                 ->middleware('permission:notifications.view')->name('recipients');
             Route::get('{campaign}/stats', [NotificationCampaignController::class, 'stats'])
                 ->middleware('permission:notifications.view')->name('stats');
+        });
+
+        /*
+         * Email template administration. The catalogue lives in code; an
+         * operator may only change plain-text subject/heading/intro per locale,
+         * disable an optional template, preview both directions, send a test to
+         * themselves, or restore the shipped copy. Security and account mail is
+         * mandatory and cannot be disabled. The template key contains dots
+         * (`tenant.order.created`), which is a valid route segment.
+         */
+        Route::prefix('email-templates')->name('email-templates.')->group(function (): void {
+            Route::get('/', [EmailTemplateController::class, 'index'])
+                ->middleware('permission:notifications.view')->name('index');
+            Route::get('{template}', [EmailTemplateController::class, 'show'])
+                ->middleware('permission:notifications.view')->name('show');
+            Route::patch('{template}', [EmailTemplateController::class, 'update'])
+                ->middleware('permission:notifications.manage')->name('update');
+            Route::post('{template}/restore', [EmailTemplateController::class, 'restore'])
+                ->middleware('permission:notifications.manage')->name('restore');
+            Route::post('{template}/preview', [EmailTemplateController::class, 'preview'])
+                ->middleware('permission:notifications.view')->name('preview');
+            Route::post('{template}/test', [EmailTemplateController::class, 'test'])
+                ->middleware('permission:notifications.manage')->name('test');
+        });
+
+        /*
+         * Delivery monitoring. Read-only visibility into every channel attempt,
+         * across tenants, with the private message payload intentionally absent.
+         * A retry is a separate, audited action from a recorded transient
+         * failure only; it is not a way to rewrite a provider's answer.
+         */
+        Route::prefix('notification-deliveries')->name('notification-deliveries.')->group(function (): void {
+            Route::get('/', [NotificationDeliveryController::class, 'index'])
+                ->middleware('permission:notifications.view')->name('index');
+            Route::get('{delivery}', [NotificationDeliveryController::class, 'show'])
+                ->middleware('permission:notifications.view')->name('show');
+            Route::post('{delivery}/retry', [NotificationDeliveryController::class, 'retry'])
+                ->middleware('permission:notifications.manage')->name('retry');
         });
 
         /*

@@ -29,6 +29,8 @@ use InvalidArgumentException;
  */
 final class AccountEmailService
 {
+    public function __construct(private readonly EmailTemplateService $templates) {}
+
     /**
      * @var list<string>
      */
@@ -61,6 +63,9 @@ final class AccountEmailService
             'email' => $user->email,
         ];
 
+        $enabled = $this->templates->isEnabled('account.'.$template);
+        $skipReason = ! $enabled ? 'template_disabled' : (blank($user->email) ? 'email_missing' : null);
+
         if ($dedupeKey !== null) {
             $existing = NotificationDelivery::query()->where('dedupe_key', $dedupeKey)->first();
 
@@ -80,10 +85,10 @@ final class AccountEmailService
                 'recipient_type' => $user->getMorphClass(),
                 'recipient_id' => $user->getKey(),
                 'recipient_ref' => $this->maskEmail($user->email),
-                'status' => blank($user->email) ? NotificationDeliveryStatus::Skipped : NotificationDeliveryStatus::Queued,
+                'status' => $skipReason === null ? NotificationDeliveryStatus::Queued : NotificationDeliveryStatus::Skipped,
                 'attempts' => 0,
-                'error' => blank($user->email) ? 'email_missing' : null,
-                'queued_at' => blank($user->email) ? null : now(),
+                'error' => $skipReason,
+                'queued_at' => $skipReason === null ? now() : null,
             ]);
         } catch (UniqueConstraintViolationException) {
             return NotificationDelivery::query()->where('dedupe_key', $dedupeKey)->firstOrFail();

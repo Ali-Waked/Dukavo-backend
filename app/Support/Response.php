@@ -32,6 +32,8 @@ final class Response
 
     public const METHOD_NOT_ALLOWED = 405;
 
+    public const GONE = 410;
+
     public const CONFLICT = 409;
 
     public const UNPROCESSABLE = 422;

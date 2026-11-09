@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
  * A single outbound delivery attempt for one channel.
@@ -53,6 +54,17 @@ class NotificationDelivery extends Model
     public function notification(): BelongsTo
     {
         return $this->belongsTo(Notification::class);
+    }
+
+    /**
+     * The account or customer a delivery was addressed to. The row stores the
+     * morph alias, so this resolves to `User` in practice.
+     *
+     * @return MorphTo<Model, $this>
+     */
+    public function recipient(): MorphTo
+    {
+        return $this->morphTo();
     }
 
     public function isTerminal(): bool
