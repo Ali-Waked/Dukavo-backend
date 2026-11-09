@@ -7,6 +7,8 @@ namespace App\Services\Inventory;
 use App\Enums\InventoryMovementType;
 use App\Enums\NotificationSeverity;
 use App\Events\Automation\InventoryLowStock as AutomationInventoryLowStock;
+use App\Events\Automation\InventoryOutOfStock as AutomationInventoryOutOfStock;
+use App\Events\Automation\InventoryRestocked as AutomationInventoryRestocked;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\Inventory;
 use App\Models\InventoryMovement;
@@ -162,7 +164,12 @@ class InventoryService
         // caller re-checks after its own commit, so a single shipment does not
         // raise the same alert from every movement it performs.
         if ($created && DB::transactionLevel() === 0) {
-            $this->evaluateLowStock($inventory, $movement);
+            $previousAvailable = max(
+                0,
+                ((int) $movement->balance_after - (int) $movement->quantity) - (int) $inventory->reserved_quantity,
+            );
+
+            $this->evaluateLowStock($inventory, $movement, $previousAvailable);
         }
 
         return $movement;
@@ -342,7 +349,12 @@ class InventoryService
         }
 
         if ($created && DB::transactionLevel() === 0) {
-            $this->evaluateLowStock($inventory, $movement);
+            $previousAvailable = max(
+                0,
+                ((int) $movement->balance_after - (int) $movement->quantity) - (int) $inventory->reserved_quantity,
+            );
+
+            $this->evaluateLowStock($inventory, $movement, $previousAvailable);
         }
 
         return $movement;
@@ -505,38 +517,58 @@ class InventoryService
     }
 
     /**
-     * Raise a low-stock alert if this row has fallen to or below its threshold.
+     * Raise the stock alerts that apply to this row after a movement.
      *
-     * The dispatcher's per-recipient cooldown is what stops a busy day becoming
-     * one email per order; this method only decides *whether* the row is low,
-     * never how often the merchant is told.
+     * `low_stock` and `out_of_stock` both fire at zero so an existing rule
+     * written before the dedicated stock-out trigger existed keeps working.
+     * `restocked` only fires when the row genuinely crossed back above zero or
+     * above its threshold, which prevents a normal sale from looking like a
+     * replenishment.
      */
-    public function evaluateLowStock(Inventory $inventory, ?int $movementId = null): void
-    {
+    public function evaluateLowStock(
+        Inventory $inventory,
+        InventoryMovement|int|null $movement = null,
+        ?int $previousAvailable = null,
+    ): void {
         $fresh = Inventory::query()->with(['product', 'variant', 'store'])->find($inventory->getKey());
 
         if (! $fresh instanceof Inventory) {
             return;
         }
 
+        $movementId = $movement instanceof InventoryMovement ? (int) $movement->getKey() : $movement;
         $available = $fresh->available();
+        $threshold = $fresh->low_stock_threshold;
 
         // A stock-out is alertable even when no reorder threshold was set: zero
         // sellable units is a fact, not a preference.
         if ($available <= 0) {
             $this->dispatchInventoryAlert($fresh, Events::TENANT_INVENTORY_OUT_OF_STOCK, $available);
             event(AutomationInventoryLowStock::fromInventory($fresh, $movementId));
+            event(AutomationInventoryOutOfStock::fromInventory($fresh, $movementId, $previousAvailable));
 
             return;
         }
 
-        if ($fresh->low_stock_threshold === null || $available > $fresh->low_stock_threshold) {
+        if ($threshold !== null && $available <= $threshold) {
+            $this->dispatchInventoryAlert($fresh, Events::TENANT_INVENTORY_LOW_STOCK, $available);
+            event(AutomationInventoryLowStock::fromInventory($fresh, $movementId));
+
             return;
         }
 
-        $this->dispatchInventoryAlert($fresh, Events::TENANT_INVENTORY_LOW_STOCK, $available);
+        if ($previousAvailable === null) {
+            return;
+        }
 
-        event(AutomationInventoryLowStock::fromInventory($fresh, $movementId));
+        $wasOut = $previousAvailable <= 0;
+        $crossedThreshold = $threshold !== null
+            && $previousAvailable <= $threshold
+            && $available > $threshold;
+
+        if ($wasOut || $crossedThreshold) {
+            event(AutomationInventoryRestocked::fromInventory($fresh, $previousAvailable, $movementId));
+        }
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Enums\AuditAction;
 use App\Enums\ConversationStatus;
 use App\Enums\MessageDirection;
 use App\Enums\MessageType;
+use App\Events\Automation\ConversationAssigned as AutomationConversationAssigned;
 use App\Events\Automation\ConversationMessageReceived as AutomationConversationMessageReceived;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\AuditLog;
@@ -125,7 +126,7 @@ class ConversationService
      * target may receive. Without it a merchant could hand a thread to a user
      * from another tenant, or to someone whose role cannot open it.
      */
-    public function assign(Conversation $conversation, ?int $userId): Conversation
+    public function assign(Conversation $conversation, ?int $userId, bool $emitAutomationEvent = true): Conversation
     {
         if ($userId === null) {
             $old = $conversation->assigned_to;
@@ -165,6 +166,10 @@ class ConversationService
             ], ['assigned_to' => $user->getKey()]);
 
             $this->notifyAssignment($conversation, $user, (int) $tenant->getKey());
+
+            if ($emitAutomationEvent) {
+                event(AutomationConversationAssigned::fromConversation($conversation, $user, $old));
+            }
         }
 
         return $conversation;

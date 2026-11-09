@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'tenant_id', 'automation_rule_id', 'automation_run_id', 'store_id',
     'assigned_to', 'created_by', 'completed_by', 'title', 'description',
     'priority', 'status', 'entity_type', 'entity_id', 'metadata', 'due_at',
-    'completed_at',
+    'completed_at', 'dedupe_key',
 ])]
 class AutomationTask extends Model
 {

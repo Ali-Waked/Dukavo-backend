@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Customers;
 
+use App\Events\Automation\CustomerCreated as AutomationCustomerCreated;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
 use App\Models\Order;
@@ -25,7 +26,7 @@ class CustomerService
      */
     public function create(array $attributes): Customer
     {
-        return DB::transaction(function () use ($attributes): Customer {
+        $customer = DB::transaction(function () use ($attributes): Customer {
             $tenant = $this->tenants->required();
 
             $customer = Customer::query()->create([
@@ -43,6 +44,10 @@ class CustomerService
 
             return $customer->load('addresses');
         });
+
+        DB::afterCommit(fn () => event(AutomationCustomerCreated::fromCustomer($customer)));
+
+        return $customer;
     }
 
     /**

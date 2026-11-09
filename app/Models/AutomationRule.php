@@ -28,9 +28,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * before saving, so a rule can only use fields its trigger really provides.
  */
 #[Fillable([
-    'tenant_id', 'store_id', 'name', 'description', 'status', 'trigger',
-    'conditions', 'actions', 'cooldown_seconds', 'created_by', 'updated_by',
-    'run_count', 'last_triggered_at',
+    'tenant_id', 'store_id', 'automation_template_id', 'template_version',
+    'name', 'description', 'status', 'trigger', 'conditions', 'actions',
+    'configuration', 'template_customized', 'installed_at', 'enabled_at',
+    'cooldown_seconds', 'created_by', 'updated_by', 'run_count',
+    'last_triggered_at',
 ])]
 class AutomationRule extends Model
 {
@@ -42,7 +44,7 @@ class AutomationRule extends Model
      */
     protected function auditAttributes(): array
     {
-        return ['name', 'status', 'trigger', 'store_id', 'cooldown_seconds'];
+        return ['name', 'status', 'trigger', 'store_id', 'cooldown_seconds', 'template_version'];
     }
 
     protected function casts(): array
@@ -52,6 +54,10 @@ class AutomationRule extends Model
             'trigger' => AutomationTrigger::class,
             'conditions' => 'array',
             'actions' => 'array',
+            'configuration' => 'array',
+            'template_customized' => 'boolean',
+            'installed_at' => 'datetime',
+            'enabled_at' => 'datetime',
             'cooldown_seconds' => 'integer',
             'run_count' => 'integer',
             'last_triggered_at' => 'datetime',
@@ -104,6 +110,27 @@ class AutomationRule extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(AutomationTask::class);
+    }
+
+    /**
+     * @return BelongsTo<AutomationTemplate, $this>
+     */
+    public function template(): BelongsTo
+    {
+        return $this->belongsTo(AutomationTemplate::class, 'automation_template_id');
+    }
+
+    /**
+     * @return HasOne<AutomationTemplateInstallation, $this>
+     */
+    public function installation(): HasOne
+    {
+        return $this->hasOne(AutomationTemplateInstallation::class);
+    }
+
+    public function isTemplateBacked(): bool
+    {
+        return $this->automation_template_id !== null;
     }
 
     public function isActive(): bool

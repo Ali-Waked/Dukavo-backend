@@ -13,10 +13,12 @@ use App\Http\Controllers\Api\V1\Ai\SalesCopilotController;
 use App\Http\Controllers\Api\V1\AnalyticsController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\Automation\AutomationInstallationController;
 use App\Http\Controllers\Api\V1\Automation\AutomationMetaController;
 use App\Http\Controllers\Api\V1\Automation\AutomationRuleController;
 use App\Http\Controllers\Api\V1\Automation\AutomationRunController;
 use App\Http\Controllers\Api\V1\Automation\AutomationTaskController;
+use App\Http\Controllers\Api\V1\Automation\AutomationTemplateController;
 use App\Http\Controllers\Api\V1\BundleController;
 use App\Http\Controllers\Api\V1\BundleRecommendationController;
 use App\Http\Controllers\Api\V1\CartController;
@@ -46,6 +48,7 @@ use App\Http\Controllers\Api\V1\NotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OnboardingController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\PermissionController;
+use App\Http\Controllers\Api\V1\Platform\AutomationTemplateController as PlatformAutomationTemplateController;
 use App\Http\Controllers\Api\V1\Platform\BlogContentImageController;
 use App\Http\Controllers\Api\V1\Platform\ContactMessageController;
 use App\Http\Controllers\Api\V1\Platform\ContentPageController as PlatformContentPageController;
@@ -383,6 +386,34 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
                 ->middleware('permission:notifications.view')->name('recipients');
             Route::get('{campaign}/stats', [NotificationCampaignController::class, 'stats'])
                 ->middleware('permission:notifications.view')->name('stats');
+        });
+
+        /*
+         * Platform automation templates. A template is a global blueprint that
+         * merchants can install; publishing a new version never rewrites an
+         * existing installation. `automation.manage` is the same capability a
+         * merchant manager holds, but this group is behind `platform`, so a
+         * tenant token can never author the catalogue.
+         */
+        Route::prefix('automation-templates')->name('automation-templates.')->group(function (): void {
+            Route::get('/', [PlatformAutomationTemplateController::class, 'index'])
+                ->middleware('permission:automation.view')->name('index');
+            Route::get('meta', [PlatformAutomationTemplateController::class, 'meta'])
+                ->middleware('permission:automation.view')->name('meta');
+            Route::post('/', [PlatformAutomationTemplateController::class, 'store'])
+                ->middleware('permission:automation.manage')->name('store');
+            Route::get('{automationTemplate}', [PlatformAutomationTemplateController::class, 'show'])
+                ->middleware('permission:automation.view')->name('show');
+            Route::patch('{automationTemplate}', [PlatformAutomationTemplateController::class, 'update'])
+                ->middleware('permission:automation.manage')->name('update');
+            Route::delete('{automationTemplate}', [PlatformAutomationTemplateController::class, 'destroy'])
+                ->middleware('permission:automation.manage')->name('destroy');
+            Route::post('{automationTemplate}/publish', [PlatformAutomationTemplateController::class, 'publish'])
+                ->middleware('permission:automation.manage')->name('publish');
+            Route::post('{automationTemplate}/archive', [PlatformAutomationTemplateController::class, 'archive'])
+                ->middleware('permission:automation.manage')->name('archive');
+            Route::get('{automationTemplate}/versions', [PlatformAutomationTemplateController::class, 'versions'])
+                ->middleware('permission:automation.view')->name('versions');
         });
 
         /*
@@ -758,6 +789,38 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
                 ->middleware('permission:automation.view')->name('runs.index');
             Route::get('runs/{automationRun}', [AutomationRunController::class, 'show'])
                 ->middleware('permission:automation.view')->name('runs.show');
+            Route::post('runs/{automationRun}/retry', [AutomationRunController::class, 'retry'])
+                ->middleware('permission:automation.manage')->name('runs.retry');
+
+            /*
+             * The template library. Templates themselves are platform-owned and
+             * global; installing one only creates a tenant-owned rule. Installed
+             * rules start paused, so every write here needs `automation.manage`.
+             */
+            Route::get('templates', [AutomationTemplateController::class, 'index'])
+                ->middleware('permission:automation.view')->name('templates.index');
+            Route::get('templates/{automationTemplate}', [AutomationTemplateController::class, 'show'])
+                ->middleware('permission:automation.view')->name('templates.show');
+            Route::post('templates/{automationTemplate}/install', [AutomationTemplateController::class, 'install'])
+                ->middleware('permission:automation.manage')->name('templates.install');
+
+            Route::get('installations', [AutomationInstallationController::class, 'index'])
+                ->middleware('permission:automation.view')->name('installations.index');
+            Route::get('installations/{installation}', [AutomationInstallationController::class, 'show'])
+                ->middleware('permission:automation.view')->name('installations.show');
+            Route::patch('installations/{installation}', [AutomationInstallationController::class, 'update'])
+                ->middleware('permission:automation.manage')->name('installations.update');
+            Route::get('installations/{installation}/update-preview', [AutomationInstallationController::class, 'preview'])
+                ->middleware('permission:automation.view')->name('installations.preview');
+            Route::post('installations/{installation}/apply-update', [AutomationInstallationController::class, 'applyUpdate'])
+                ->middleware('permission:automation.manage')->name('installations.apply-update');
+            Route::post('installations/{installation}/enable', [AutomationInstallationController::class, 'enable'])
+                ->middleware('permission:automation.manage')->name('installations.enable');
+            Route::post('installations/{installation}/disable', [AutomationInstallationController::class, 'disable'])
+                ->middleware('permission:automation.manage')->name('installations.disable');
+            Route::delete('installations/{installation}', [AutomationInstallationController::class, 'destroy'])
+                ->middleware('permission:automation.manage')->name('installations.destroy');
+
             Route::get('tasks', [AutomationTaskController::class, 'index'])
                 ->middleware('permission:automation.view')->name('tasks.index');
             Route::get('tasks/{automationTask}', [AutomationTaskController::class, 'show'])

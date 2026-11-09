@@ -13,6 +13,7 @@ use App\Models\AutomationRule;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Ai\Governance\Executors\AiActionExecutorRegistry;
+use App\Services\Automation\AutomationActionRegistry;
 use App\Services\Automation\AutomationDefinition;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -145,6 +146,13 @@ abstract class AutomationRuleRequest extends ApiRequest
             return;
         }
 
+        $rule = $this->route('automationRule');
+        $rule = $rule instanceof AutomationRule ? $rule : null;
+        $existingTypes = array_map(
+            static fn (mixed $action): string => is_array($action) ? (string) ($action['type'] ?? '') : '',
+            $rule?->actions ?? [],
+        );
+
         foreach (array_values($actions) as $index => $action) {
             if (! is_array($action)) {
                 continue;
@@ -157,10 +165,27 @@ abstract class AutomationRuleRequest extends ApiRequest
                 continue;
             }
 
+            $availability = AutomationActionRegistry::availabilityReason($type);
+
+            if ($availability !== null && ! in_array($type->value, $existingTypes, true)) {
+                $validator->errors()->add(
+                    "actions.{$index}.type",
+                    sprintf(
+                        'The "%s" action is not available in this workspace (%s).',
+                        $type->label(),
+                        str_replace('_', ' ', $availability),
+                    ),
+                );
+
+                continue;
+            }
+
             match ($type) {
                 AutomationActionType::NotifyTeam => $this->validateNotifyConfig($validator, $index, $config),
                 AutomationActionType::CreateTask => $this->validateTaskConfig($validator, $index, $config),
                 AutomationActionType::ProposeAiAction => $this->validateAiConfig($validator, $index, $config),
+                AutomationActionType::SendCustomerEmail => $this->validateEmailConfig($validator, $index, $config),
+                AutomationActionType::SendCustomerWhatsApp => $this->validateWhatsAppConfig($validator, $index, $config),
             };
         }
     }
@@ -260,6 +285,45 @@ abstract class AutomationRuleRequest extends ApiRequest
             $validator->errors()->add(
                 "actions.{$index}.config.summary",
                 'The proposal summary may not exceed 255 characters.',
+            );
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    private function validateEmailConfig(Validator $validator, int $index, array $config): void
+    {
+        $subject = $config['subject'] ?? null;
+
+        if (! is_string($subject) || trim($subject) === '' || mb_strlen(trim($subject)) > 180) {
+            $validator->errors()->add(
+                "actions.{$index}.config.subject",
+                'The customer email needs a subject of up to 180 characters.',
+            );
+        }
+
+        $body = $config['body'] ?? null;
+
+        if (! is_string($body) || trim($body) === '' || mb_strlen($body) > 10000) {
+            $validator->errors()->add(
+                "actions.{$index}.config.body",
+                'The customer email needs a message of up to 10000 characters.',
+            );
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    private function validateWhatsAppConfig(Validator $validator, int $index, array $config): void
+    {
+        $message = $config['message'] ?? null;
+
+        if (! is_string($message) || trim($message) === '' || mb_strlen($message) > 1000) {
+            $validator->errors()->add(
+                "actions.{$index}.config.message",
+                'The customer WhatsApp message needs text of up to 1000 characters.',
             );
         }
     }

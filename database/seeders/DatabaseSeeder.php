@@ -36,6 +36,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RolePermissionSeeder::class,
             PlatformUserSeeder::class,
+            AutomationTemplateSeeder::class,
             TenantSeeder::class,
             CatalogSeeder::class,
             CustomerSeeder::class,

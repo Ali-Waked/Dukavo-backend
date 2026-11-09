@@ -33,7 +33,19 @@ final class AutomationRuleService
     {
         $normalised = $this->normalise($attributes, null);
 
-        $rule = AutomationRule::query()->create($normalised + [
+        // Template provenance is written only by the installer, never by the
+        // HTTP request. The request validator does not allow these keys, so a
+        // merchant cannot forge a link to a platform template.
+        $provenance = array_intersect_key($attributes, array_flip([
+            'automation_template_id',
+            'template_version',
+            'configuration',
+            'template_customized',
+            'installed_at',
+            'enabled_at',
+        ]));
+
+        $rule = AutomationRule::query()->create($normalised + $provenance + [
             'created_by' => $actor->getKey(),
             'updated_by' => $actor->getKey(),
         ]);
@@ -47,8 +59,14 @@ final class AutomationRuleService
     public function update(AutomationRule $rule, array $attributes, User $actor): AutomationRule
     {
         $normalised = $this->normalise($attributes, $rule);
+        $customised = $this->definitionChanged($rule, $normalised);
 
         $rule->fill($normalised + ['updated_by' => $actor->getKey()])->save();
+
+        if ($customised) {
+            $rule->forceFill(['template_customized' => true])->save();
+            $rule->installation()->update(['template_customized' => true]);
+        }
 
         return $rule->load(['store', 'creator']);
     }
@@ -81,7 +99,7 @@ final class AutomationRuleService
         $normalised = [
             'trigger' => $trigger,
             'conditions' => $this->normaliseConditions($conditions, $trigger),
-            'actions' => $this->normaliseActions($actions),
+            'actions' => $this->normaliseActions($actions, $existing),
             'status' => $existing?->status ?? AutomationRuleStatus::Paused,
         ];
 
@@ -213,13 +231,32 @@ final class AutomationRuleService
     }
 
     /**
+     * @param  array<string, mixed>  $normalised
+     */
+    private function definitionChanged(AutomationRule $rule, array $normalised): bool
+    {
+        if (! $rule->isTemplateBacked()) {
+            return false;
+        }
+
+        return $normalised['trigger'] !== $rule->trigger
+            || $normalised['conditions'] !== ($rule->conditions ?? [])
+            || $normalised['actions'] !== ($rule->actions ?? []);
+    }
+
+    /**
      * @return list<array{type: string, config: array<string, mixed>}>
      */
-    private function normaliseActions(mixed $actions): array
+    private function normaliseActions(mixed $actions, ?AutomationRule $existing = null): array
     {
         if (! is_array($actions) || $actions === [] || count($actions) > 10) {
             throw BusinessRuleViolation::because('Add between 1 and 10 actions to the rule.');
         }
+
+        $existingTypes = array_map(
+            static fn (mixed $action): string => is_array($action) ? (string) ($action['type'] ?? '') : '',
+            $existing?->actions ?? [],
+        );
 
         $normalised = [];
 
@@ -234,6 +271,16 @@ final class AutomationRuleService
                 throw BusinessRuleViolation::because('Choose a supported automation action.');
             }
 
+            $availability = AutomationActionRegistry::availabilityReason($type);
+
+            if ($availability !== null && ! in_array($type->value, $existingTypes, true)) {
+                throw BusinessRuleViolation::because(sprintf(
+                    'The "%s" action is not available in this workspace (%s).',
+                    $type->label(),
+                    str_replace('_', ' ', $availability),
+                ));
+            }
+
             $config = $action['config'] ?? [];
 
             if (! is_array($config)) {
@@ -246,6 +293,8 @@ final class AutomationRuleService
                     AutomationActionType::NotifyTeam => $this->notifyConfig($config),
                     AutomationActionType::CreateTask => $this->taskConfig($config),
                     AutomationActionType::ProposeAiAction => $this->aiActionConfig($config),
+                    AutomationActionType::SendCustomerEmail => $this->emailConfig($config),
+                    AutomationActionType::SendCustomerWhatsApp => $this->whatsAppConfig($config),
                 },
             ];
         }
@@ -306,6 +355,41 @@ final class AutomationRuleService
             'assigned_to' => $assignedTo !== null && $assignedTo !== '' ? (int) $assignedTo : null,
             'due_in_days' => $dueInDays !== null && $dueInDays !== '' ? (int) $dueInDays : null,
         ], static fn (mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array{subject: string, body: string}
+     */
+    private function emailConfig(array $config): array
+    {
+        $subject = trim((string) ($config['subject'] ?? ''));
+        $body = trim((string) ($config['body'] ?? ''));
+
+        if ($subject === '' || mb_strlen($subject) > 180) {
+            throw BusinessRuleViolation::because('The customer email needs a subject of up to 180 characters.');
+        }
+
+        if ($body === '' || mb_strlen($body) > 10000) {
+            throw BusinessRuleViolation::because('The customer email needs a message of up to 10000 characters.');
+        }
+
+        return ['subject' => $subject, 'body' => $body];
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array{message: string}
+     */
+    private function whatsAppConfig(array $config): array
+    {
+        $message = trim((string) ($config['message'] ?? ''));
+
+        if ($message === '' || mb_strlen($message) > 1000) {
+            throw BusinessRuleViolation::because('The customer WhatsApp message needs text of up to 1000 characters.');
+        }
+
+        return ['message' => $message];
     }
 
     /**

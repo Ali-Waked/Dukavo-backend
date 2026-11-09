@@ -9,6 +9,7 @@ use App\Enums\AutomationTrigger;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AutomationRunResource;
 use App\Models\AutomationRun;
+use App\Services\Automation\AutomationEngine;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -16,10 +17,13 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  * Read-only execution history.
  *
  * Runs explain both matches and skips, which is what lets a merchant debug a
- * rule that is active but apparently doing nothing.
+ * rule that is active but apparently doing nothing. Retrying is a write
+ * operation: it re-evaluates the failed actions and must be explicitly requested.
  */
 final class AutomationRunController extends Controller
 {
+    public function __construct(private readonly AutomationEngine $engine) {}
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $runs = AutomationRun::query()
@@ -42,6 +46,13 @@ final class AutomationRunController extends Controller
 
     public function show(AutomationRun $automationRun): AutomationRunResource
     {
-        return new AutomationRunResource($automationRun->load('rule'));
+        return new AutomationRunResource($automationRun->load(['rule', 'logs']));
+    }
+
+    public function retry(AutomationRun $automationRun): AutomationRunResource
+    {
+        $run = $this->engine->retry($automationRun);
+
+        return new AutomationRunResource($run->load(['rule', 'logs']));
     }
 }

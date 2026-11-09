@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Events\Automation\ConversationAssigned;
 use App\Events\Automation\ConversationMessageReceived;
+use App\Events\Automation\CustomerCreated;
 use App\Events\Automation\InventoryLowStock;
+use App\Events\Automation\InventoryOutOfStock;
+use App\Events\Automation\InventoryRestocked;
 use App\Events\Automation\OrderCreated;
+use App\Events\Automation\OrderDelivered;
+use App\Events\Automation\OrderPaid;
 use App\Events\Automation\OrderStatusChanged;
 use App\Events\Automation\RecoveryOpportunityDetected;
+use App\Events\Automation\ScheduledAutomationEvent;
 use App\Listeners\NotifyPasswordReset;
 use App\Listeners\RunAutomationRules;
 use App\Models\AiAction;
@@ -243,9 +250,16 @@ class AppServiceProvider extends ServiceProvider
         foreach ([
             OrderCreated::class,
             OrderStatusChanged::class,
+            OrderPaid::class,
+            OrderDelivered::class,
             InventoryLowStock::class,
+            InventoryOutOfStock::class,
+            InventoryRestocked::class,
             ConversationMessageReceived::class,
+            ConversationAssigned::class,
+            CustomerCreated::class,
             RecoveryOpportunityDetected::class,
+            ScheduledAutomationEvent::class,
         ] as $event) {
             Event::listen($event, RunAutomationRules::class);
         }

@@ -16,6 +16,8 @@ enum AutomationActionType: string
     case NotifyTeam = 'notify_team';
     case CreateTask = 'create_task';
     case ProposeAiAction = 'propose_ai_action';
+    case SendCustomerEmail = 'send_customer_email';
+    case SendCustomerWhatsApp = 'send_customer_whatsapp';
 
     public function label(): string
     {
@@ -23,6 +25,30 @@ enum AutomationActionType: string
             self::NotifyTeam => 'Notify the team',
             self::CreateTask => 'Create an internal task',
             self::ProposeAiAction => 'Propose an action for approval',
+            self::SendCustomerEmail => 'Email the customer',
+            self::SendCustomerWhatsApp => 'Message the customer on WhatsApp',
+        };
+    }
+
+    public function category(): string
+    {
+        return match ($this) {
+            self::NotifyTeam,
+            self::CreateTask,
+            self::ProposeAiAction => 'internal',
+            self::SendCustomerEmail,
+            self::SendCustomerWhatsApp => 'customer',
+        };
+    }
+
+    public function risk(): string
+    {
+        return match ($this) {
+            self::NotifyTeam,
+            self::CreateTask => 'low',
+            self::SendCustomerEmail,
+            self::SendCustomerWhatsApp => 'medium',
+            self::ProposeAiAction => 'low',
         };
     }
 }

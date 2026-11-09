@@ -10,6 +10,8 @@ use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Events\Automation\OrderCreated as AutomationOrderCreated;
+use App\Events\Automation\OrderDelivered as AutomationOrderDelivered;
+use App\Events\Automation\OrderPaid as AutomationOrderPaid;
 use App\Events\Automation\OrderStatusChanged as AutomationOrderStatusChanged;
 use App\Exceptions\BusinessRuleViolation;
 use App\Models\Customer;
@@ -514,6 +516,14 @@ class OrderService
 
         if ($history instanceof OrderStatusHistory) {
             event(AutomationOrderStatusChanged::fromOrder($order, $from, $status, $history, $note));
+
+            if ($status === OrderStatus::Delivered) {
+                event(AutomationOrderDelivered::fromOrder($order, $history, $note));
+
+                if ($order->payment_status === PaymentStatus::Paid) {
+                    event(AutomationOrderPaid::fromOrder($order));
+                }
+            }
         }
 
         return $order;
@@ -535,6 +545,7 @@ class OrderService
         $order->forceFill(['payment_status' => PaymentStatus::Paid])->save();
 
         $this->announcePaymentStatus($order, Events::TENANT_ORDER_PAID, 'paid');
+        event(AutomationOrderPaid::fromOrder($order));
 
         return $order;
     }

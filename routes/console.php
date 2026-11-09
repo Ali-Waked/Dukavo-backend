@@ -2,6 +2,7 @@
 
 use App\Models\Tenant;
 use App\Services\Ai\Governance\AiActionService;
+use App\Services\Automation\AutomationScheduleRunner;
 use App\Services\Recovery\RecoveryDetectionService;
 use App\Services\Voice\VoiceMediaRetention;
 use Illuminate\Foundation\Inspiring;
@@ -87,6 +88,34 @@ Artisan::command('recovery:detect {--tenant= : Detect for one tenant id} {--dry-
     return $totals['failed'] > 0 ? 1 : 0;
 })->purpose('Detect conservative lost-sale opportunities and wake/expire work')->hourly()->withoutOverlapping();
 
+Artisan::command('automation:run-scheduled {--scope=daily : daily, weekly or all} {--tenant= : Run for one tenant id} {--dry-run : Report without dispatching}', function () {
+    $scope = (string) $this->option('scope');
+
+    if (! in_array($scope, ['daily', 'weekly', 'all'], true)) {
+        $this->error('The scope must be daily, weekly or all.');
+
+        return 1;
+    }
+
+    $tenantId = $this->option('tenant');
+    $stats = app(AutomationScheduleRunner::class)->run(
+        $scope,
+        $tenantId !== null ? (int) $tenantId : null,
+        (bool) $this->option('dry-run'),
+    );
+
+    $this->info(sprintf(
+        '%s %d automation event(s) for %d rule(s) across %d tenant(s); skipped %d rule(s).',
+        $this->option('dry-run') ? 'Would dispatch' : 'Dispatched',
+        $stats['events'],
+        $stats['rules'],
+        $stats['tenants'],
+        $stats['skipped'],
+    ));
+
+    return 0;
+})->purpose('Dispatch due daily, weekly and unpaid-order automation events');
+
 /*
  * Email schedules.
  *
@@ -99,6 +128,14 @@ Schedule::command('email:report weekly')->weeklyOn(1, '07:00')->withoutOverlappi
 Schedule::command('email:report monthly')->monthlyOn(1, '07:30')->withoutOverlapping();
 Schedule::command('email:report performance')->monthlyOn(1, '08:00')->withoutOverlapping();
 Schedule::command('email:restock-reminders')->dailyAt('09:00')->withoutOverlapping();
+
+/*
+ * Automation scheduler. The daily run also evaluates unpaid-order follow-ups;
+ * the weekly run produces its own dated event. Both are idempotent inside the
+ * engine, so a retried or duplicated scheduler invocation cannot double-send.
+ */
+Schedule::command('automation:run-scheduled --scope=daily')->dailyAt('06:00')->withoutOverlapping();
+Schedule::command('automation:run-scheduled --scope=weekly')->weeklyOn(1, '06:10')->withoutOverlapping();
 
 /*
  * Notification housekeeping. Runs in the quiet hours so a large delete never
