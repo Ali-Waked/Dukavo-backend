@@ -851,12 +851,12 @@ Queue workers need `DUKAVO_NOTIFICATION_PUSH`, Firebase credentials and
 
 | Area | Evidence | Status |
 | --- | --- | --- |
-| Backend notification centre, preferences, campaigns, broadcast auth, retention | Focused suite: 37 tests / 134 assertions passed | Verified in test environment |
-| Full backend suite | See the implementation report; run with a raised PHP memory limit (`php -d memory_limit=1G artisan test`) because the route file exceeds the default 128 MB on this machine | Recorded per release |
+| Backend notification centre, preferences, campaigns, broadcast auth, devices, push, retention | Focused suite: 52 tests / 188 assertions passed | Verified in test environment |
+| Full backend suite | 729 tests / 3918 assertions passed on 2026-11-09 (`php -d memory_limit=1G vendor/bin/phpunit`; the route file exceeds the default 128 MB on this machine) | Verified in test environment |
 | Vue type-check | `npm run type-check` | Passed |
-| Vue navigation safety | `npm test` (`tests/notificationNavigation.test.ts`) | Passed |
-| Flutter static analysis | `flutter analyze` | Passed |
-| Flutter notification parsing/deep links | `flutter test test/features/notifications/notification_test.dart` | Passed |
+| Vue navigation safety | `npm test` (`tests/notificationNavigation.test.ts`); 27 tests passed | Passed |
+| Flutter static analysis | `flutter analyze lib/features/notifications test/features/notifications` | Passed for notification paths |
+| Flutter notification parsing/deep links | `flutter test test/features/notifications/notification_test.dart`; 6 tests passed in a clean worktree at the notification commit | Passed |
 | Reverb live delivery | No server/key configured; `BROADCAST_CONNECTION=log` | **Not verified** |
 | FCM live delivery | No Firebase project/credentials/device | **Not verified** |
 | SMTP | Tests use array mailer; no live SMTP | **Not verified** |

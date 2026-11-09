@@ -91,12 +91,12 @@ is a delivery transport only. Laravel Reverb carries web realtime events.
 
 ### 2.4 Backend verification
 
-- Focused notification suite: **37 tests / 134 assertions passed**
+- Focused notification suite: **52 tests / 188 assertions passed**
   (`NotificationCenterTest`, `NotificationPreferenceTest`,
   `NotificationCampaignTest`, `NotificationBroadcastTest`,
-  `NotificationRetentionTest`).
-- Full backend suite result is recorded in the implementation report and the
-  platform document.
+  `NotificationRetentionTest`, `NotificationDeviceTest`,
+  `NotificationPushTest`).
+- Full backend suite: **729 tests / 3918 assertions passed** on 2026-11-09.
 - Pint formatting is run before commit.
 
 ---
@@ -139,7 +139,8 @@ is a delivery transport only. Laravel Reverb carries web realtime events.
 
 ### 3.3 Verified / unverified
 
-- Type-check: **verified**.
+- Type-check: **verified** (`vue-tsc --build`).
+- Navigation safety tests: **verified** (`npm test`, 27 tests).
 - Reverb live delivery: **implemented, unverified**. The backend currently has
   `BROADCAST_CONNECTION=log` and no Reverb app key in `.env`.
 - Firebase web push: **not implemented**. The deployment has no browser push
@@ -184,7 +185,10 @@ is a delivery transport only. Laravel Reverb carries web realtime events.
 
 ### 4.3 Verified / unverified
 
-- `flutter analyze`: recorded in the implementation report.
+- `flutter analyze lib/features/notifications test/features/notifications`:
+  **verified, no issues**.
+- `flutter test test/features/notifications/notification_test.dart`: **6 tests
+  passed** in a clean worktree at the notification commit.
 - Firebase token registration, foreground/background delivery and tap routing:
   **implemented, unverified** because no Firebase project, credentials,
   `google-services.json` or APNs configuration exist in this environment.
