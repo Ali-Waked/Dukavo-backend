@@ -39,7 +39,11 @@ class PublicStorefrontResource extends JsonResource
             'currency_decimals' => $this->currency_decimals ?? $currency['decimals'] ?? 2,
             'timezone' => $this->timezone,
             'locale' => $locale,
-            'settings' => StorefrontSettings::localized($this->storefront_settings, $locale),
+            'settings' => StorefrontSettings::localized(
+                $this->storefront_settings,
+                $locale,
+                $this->resource->approvedTranslations($locale),
+            ),
         ];
     }
 }

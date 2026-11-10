@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\ProductStatus;
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasTranslations;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -28,7 +29,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Product extends Model
 {
     /** @use HasFactory<ProductFactory> */
-    use Auditable, BelongsToTenant, HasFactory, SoftDeletes;
+    use Auditable, BelongsToTenant, HasFactory, HasTranslations, SoftDeletes;
 
     /**
      * @return list<string>
@@ -107,6 +108,18 @@ class Product extends Model
     public function isSellable(): bool
     {
         return $this->status === ProductStatus::Active;
+    }
+
+    /** The best available product name for the requested locale. */
+    public function localizedName(string $locale): string
+    {
+        return $this->translatedValue('name', $locale, (string) $this->name);
+    }
+
+    /** The best available description, or the canonical value when untranslated. */
+    public function localizedDescription(string $locale): ?string
+    {
+        return $this->translatedValue('description', $locale, $this->description);
     }
 
     #[Scope]

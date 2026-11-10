@@ -49,6 +49,7 @@ class StoreResource extends JsonResource
             'currency_decimals' => $this->currency_decimals ?? $currency['decimals'] ?? 2,
             'currency_updated_at' => $this->currency_updated_at?->toIso8601String(),
             'timezone' => $this->timezone,
+            'enabled_locales' => $this->enabled_locales ?? (array) config('dukavo.locales.enabled_default', ['en', 'ar']),
             'is_default' => $this->is_default,
             'storefront_enabled' => $this->storefront_enabled,
             'locale' => $locale,

@@ -6,7 +6,9 @@ namespace App\Models;
 
 use App\Enums\NewsletterArticleStatus;
 use App\Models\Concerns\Auditable;
+use App\Models\Concerns\HasTranslations;
 use App\Support\HtmlSanitizer;
+use App\Support\LocalizedText;
 use Database\Factories\NewsletterFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -48,7 +50,7 @@ use Illuminate\Support\Facades\Storage;
 class Newsletter extends Model
 {
     /** @use HasFactory<NewsletterFactory> */
-    use Auditable, HasFactory;
+    use Auditable, HasFactory, HasTranslations;
 
     /**
      * @return list<string>
@@ -118,6 +120,108 @@ class Newsletter extends Model
         $words = preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         return max(1, (int) ceil(count($words) / 200));
+    }
+
+    /**
+     * The language the edition is actually served in.
+     *
+     * Legacy Arabic copy is stored in `*_ar` columns rather than the ledger, so
+     * both sources count before the edition degrades to its English original.
+     */
+    public function resolvedLocale(string $locale): string
+    {
+        if ($locale === 'ar' && $this->hasLegacyArabicCopy()) {
+            return 'ar';
+        }
+
+        if ($this->hasApprovedTranslations($locale)) {
+            return $locale;
+        }
+
+        return 'en';
+    }
+
+    private function hasLegacyArabicCopy(): bool
+    {
+        foreach (['title_ar', 'excerpt_ar', 'body_ar', 'meta_title_ar', 'meta_description_ar'] as $field) {
+            $value = $this->getAttribute($field);
+
+            if (is_string($value) && trim($value) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The best available title for the requested locale. */
+    public function localizedTitle(string $locale): string
+    {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('title', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
+        return (string) LocalizedText::pick($this->title, $this->title_ar, $locale);
+    }
+
+    /** The best available excerpt for the requested locale. */
+    public function localizedExcerpt(string $locale): ?string
+    {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('excerpt', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
+        return LocalizedText::pick($this->excerpt, $this->excerpt_ar, $locale);
+    }
+
+    /** The best available sanitised body for the requested locale. */
+    public function localizedBody(string $locale): ?string
+    {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('body', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
+        return LocalizedText::pick($this->body, $this->body_ar, $locale);
+    }
+
+    /** The best available meta title for the requested locale. */
+    public function localizedMetaTitle(string $locale): ?string
+    {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('meta_title', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
+        return LocalizedText::pick($this->meta_title, $this->meta_title_ar, $locale);
+    }
+
+    /** The best available meta description for the requested locale. */
+    public function localizedMetaDescription(string $locale): ?string
+    {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('meta_description', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
+        return LocalizedText::pick($this->meta_description, $this->meta_description_ar, $locale);
     }
 
     /**

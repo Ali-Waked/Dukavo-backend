@@ -34,6 +34,8 @@ class StoreStoreRequest extends ApiRequest
             'phone' => ['nullable', 'string', 'max:32'],
             'currency' => ['nullable', 'string', 'size:3', 'uppercase', Rule::in(array_keys((array) config('dukavo.currencies.supported', [])))],
             'timezone' => ['nullable', 'timezone'],
+            'enabled_locales' => ['sometimes', 'nullable', 'array', 'max:25'],
+            'enabled_locales.*' => ['required', 'string', Rule::in((array) config('dukavo.locales.supported', ['en']))],
             'is_default' => ['sometimes', 'boolean'],
         ];
     }

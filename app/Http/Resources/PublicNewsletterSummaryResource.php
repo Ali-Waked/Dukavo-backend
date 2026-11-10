@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\Newsletter;
-use App\Support\LocalizedText;
 use App\Support\PreferredLocale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -28,17 +27,17 @@ class PublicNewsletterSummaryResource extends JsonResource
     public function toArray(Request $request): array
     {
         $locale = PreferredLocale::from($request);
-        $body = LocalizedText::pick($this->body, $this->body_ar, $locale);
+        $body = $this->resource->localizedBody($locale);
 
         return [
             'id' => $this->id,
             'slug' => $this->slug,
-            'title' => LocalizedText::pick($this->title, $this->title_ar, $locale),
-            'excerpt' => LocalizedText::pick($this->excerpt, $this->excerpt_ar, $locale),
+            'title' => $this->resource->localizedTitle($locale),
+            'excerpt' => $this->resource->localizedExcerpt($locale),
             'cover_image_url' => $this->coverImageUrl(),
             'reading_minutes' => $this->readingMinutesFor($body),
             'published_at' => $this->published_at?->toIso8601String(),
-            'locale' => $locale,
+            'locale' => $this->resource->resolvedLocale($locale),
         ];
     }
 }

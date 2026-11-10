@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use App\Models\Concerns\HasTranslations;
+use App\Support\LocalizedText;
 use Database\Factories\FaqEntryFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -23,7 +25,7 @@ use Illuminate\Database\Eloquent\Model;
 class FaqEntry extends Model
 {
     /** @use HasFactory<FaqEntryFactory> */
-    use Auditable, HasFactory;
+    use Auditable, HasFactory, HasTranslations;
 
     /**
      * @return list<string>
@@ -39,6 +41,34 @@ class FaqEntry extends Model
             'active' => 'boolean',
             'sort_order' => 'integer',
         ];
+    }
+
+    /** The best available question for the requested locale. */
+    public function localizedQuestion(string $locale): string
+    {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('question', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
+        return (string) LocalizedText::pick($this->question, $this->question_ar, $locale);
+    }
+
+    /** The best available answer for the requested locale. */
+    public function localizedAnswer(string $locale): string
+    {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('answer', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
+        return (string) LocalizedText::pick($this->answer, $this->answer_ar, $locale);
     }
 
     /**

@@ -166,6 +166,8 @@ abstract class Feature
             throw $exception;
         }
 
+        $completion = $completion->withProvider($provider->provider());
+
         $this->usage->recordSuccess($feature, $completion, $tenantId, $userId, $provider->provider());
 
         return $completion;

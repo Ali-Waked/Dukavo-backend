@@ -33,8 +33,8 @@ class PublicProductResource extends JsonResource
 
         return [
             'slug' => $this->slug,
-            'name' => $this->name,
-            'description' => $this->description,
+            'name' => $this->resource->localizedName($locale),
+            'description' => $this->resource->localizedDescription($locale),
             'price' => (float) $this->price,
             'currency' => $this->currency,
             'is_taxable' => $this->is_taxable,

@@ -111,8 +111,8 @@ class LocalizedShopContentTest extends TestCase
         // An unsupported language must not 404 or blank the payload. No
         // supported language is present in either hint, so the default wins.
         $this->api($this->merchant)
-            ->withHeader('Accept-Language', 'fr-FR')
-            ->getJson('/api/v1/tenant/categories?locale=fr')
+            ->withHeader('Accept-Language', 'zz-ZZ')
+            ->getJson('/api/v1/tenant/categories?locale=zz')
             ->assertOk()
             ->assertJsonPath('data.0.localized_name', 'Bakery')
             ->assertJsonPath('data.0.locale', 'en');

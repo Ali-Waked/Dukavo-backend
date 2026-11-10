@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\FaqEntry;
-use App\Support\LocalizedText;
 use App\Support\PreferredLocale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -26,8 +25,8 @@ class PublicFaqEntryResource extends JsonResource
 
         return [
             'id' => $this->id,
-            'question' => LocalizedText::pick($this->question, $this->question_ar, $locale),
-            'answer' => LocalizedText::pick($this->answer, $this->answer_ar, $locale),
+            'question' => $this->resource->localizedQuestion($locale),
+            'answer' => $this->resource->localizedAnswer($locale),
             'category' => $this->category,
             'sort_order' => $this->sort_order,
             'locale' => $locale,

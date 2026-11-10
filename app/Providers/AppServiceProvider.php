@@ -57,6 +57,7 @@ use App\Services\Ai\Features\MerchantCopilot;
 use App\Services\Ai\Features\NewsletterAssistant;
 use App\Services\Ai\Features\RecoveryAssistant;
 use App\Services\Ai\Features\SalesCopilot;
+use App\Services\Ai\Features\TranslationAssistant;
 use App\Services\Ai\Governance\Executors\AiActionExecutorRegistry;
 use App\Services\Ai\Governance\Executors\ConversationSendMessageExecutor;
 use App\Services\Ai\Governance\Executors\CustomerCreateExecutor;
@@ -77,6 +78,8 @@ use App\Services\Notifications\NotificationEventCatalog;
 use App\Services\Notifications\Push\Contracts\PushTransport;
 use App\Services\Notifications\Push\FirebasePushTransport;
 use App\Services\Recovery\RecoveryService;
+use App\Services\Translation\TranslationEntityRegistry;
+use App\Services\Translation\TranslationStaleObserver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -242,6 +245,14 @@ class AppServiceProvider extends ServiceProvider
                 queueable: false,
                 service: MerchantCopilot::class,
             ),
+            new FeatureDescriptor(
+                key: 'translation',
+                label: 'AI translation',
+                permissions: ['translations.generate'],
+                capabilities: [AiCapability::StructuredOutput],
+                queueable: false,
+                service: TranslationAssistant::class,
+            ),
         ];
     }
 
@@ -375,6 +386,15 @@ class AppServiceProvider extends ServiceProvider
                 report($exception);
             }
         });
+
+        // Source changes make existing translations stale, never silently
+        // overwrite them. Every translatable model is registered in one place,
+        // so adding an entity to the registry also gives it stale detection.
+        $translationEntities = $this->app->make(TranslationEntityRegistry::class);
+
+        foreach ($translationEntities->all() as $entity) {
+            $entity->model::observe(TranslationStaleObserver::class);
+        }
 
         Model::preventLazyLoading(! $this->app->isProduction());
         Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());

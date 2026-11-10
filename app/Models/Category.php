@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasTranslations;
 use App\Support\LocalizedText;
 use Database\Factories\CategoryFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -25,7 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Category extends Model
 {
     /** @use HasFactory<CategoryFactory> */
-    use Auditable, BelongsToTenant, HasFactory;
+    use Auditable, BelongsToTenant, HasFactory, HasTranslations;
 
     /**
      * @return list<string>
@@ -105,12 +106,28 @@ class Category extends Model
     /** The best available category name for the requested locale. */
     public function localizedName(string $locale): string
     {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('name', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
         return (string) LocalizedText::pick($this->name, $this->name_ar, $locale);
     }
 
     /** The best available description, or null when neither language has one. */
     public function localizedDescription(string $locale): ?string
     {
+        if ($locale !== 'ar') {
+            $approved = $this->translatedValue('description', $locale);
+
+            if ($approved !== null) {
+                return $approved;
+            }
+        }
+
         return LocalizedText::pick($this->description, $this->description_ar, $locale);
     }
 }

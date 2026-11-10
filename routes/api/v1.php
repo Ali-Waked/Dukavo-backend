@@ -77,6 +77,7 @@ use App\Http\Controllers\Api\V1\Storefront\ShippingZoneController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCheckoutController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontSettingsController;
 use App\Http\Controllers\Api\V1\TenantSettingsController;
+use App\Http\Controllers\Api\V1\Translation\TranslationController;
 use App\Http\Controllers\Api\V1\UnsubscribeController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\VoiceMessageController;
@@ -325,6 +326,33 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
             ->middleware('permission:ai.use')->name('ai.insights');
         Route::post('ai/newsletter-content', [ContentAssistantController::class, 'generate'])
             ->middleware('permission:ai.use')->name('ai.newsletter-content');
+
+        /*
+         * Translation review for Dukavo's own marketing content (FAQ, blog,
+         * content pages). Platform content has no tenant, so these rows are the
+         * tenant-less half of the same review ledger the merchant surface uses.
+         * Generation is a proposal; only an explicit approve publishes it.
+         */
+        Route::prefix('translations')->name('translations.')->group(function (): void {
+            Route::get('entities', [TranslationController::class, 'entities'])
+                ->middleware('permission:translations.view')->name('entities');
+            Route::get('usage', [TranslationController::class, 'usage'])
+                ->middleware('permission:translations.view')->name('usage');
+            Route::get('{entity}/{id}', [TranslationController::class, 'show'])
+                ->middleware('permission:translations.view')->name('show');
+            Route::post('{entity}/{id}/generate', [TranslationController::class, 'generate'])
+                ->middleware('permission:translations.generate')->name('generate');
+            Route::post('{entity}/{id}/approve-all', [TranslationController::class, 'approveAll'])
+                ->middleware('permission:translations.review')->name('approve-all');
+            Route::patch('{translation}', [TranslationController::class, 'update'])
+                ->middleware('permission:translations.review')->name('update');
+            Route::post('{translation}/approve', [TranslationController::class, 'approve'])
+                ->middleware('permission:translations.review')->name('approve');
+            Route::post('{translation}/reject', [TranslationController::class, 'reject'])
+                ->middleware('permission:translations.review')->name('reject');
+            Route::post('{translation}/regenerate', [TranslationController::class, 'regenerate'])
+                ->middleware('permission:translations.review')->name('regenerate');
+        });
 
         Route::get('tenants', [TenantController::class, 'index'])->name('tenants.index');
         Route::post('tenants', [TenantController::class, 'store'])->name('tenants.store');
@@ -818,6 +846,34 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
             ->middleware(['permission:ai.approve'])->name('ai.actions.reject');
         Route::post('ai/actions/{action}/execute', [AiActionController::class, 'execute'])
             ->middleware(['permission:ai.approve'])->name('ai.actions.execute');
+
+        /*
+         * AI translation review. Every translatable entity (products,
+         * categories, shipping zones, store copy, automations) uses the same
+         * generic surface: the registry decides the fields, the service decides
+         * the workflow and the workspace scope is resolved before any id is
+         * accepted. Generation is only a proposal; approval is separate.
+         */
+        Route::prefix('translations')->name('translations.')->group(function (): void {
+            Route::get('entities', [TranslationController::class, 'entities'])
+                ->middleware('permission:translations.view')->name('entities');
+            Route::get('usage', [TranslationController::class, 'usage'])
+                ->middleware('permission:translations.view')->name('usage');
+            Route::get('{entity}/{id}', [TranslationController::class, 'show'])
+                ->middleware('permission:translations.view')->name('show');
+            Route::post('{entity}/{id}/generate', [TranslationController::class, 'generate'])
+                ->middleware('permission:translations.generate')->name('generate');
+            Route::post('{entity}/{id}/approve-all', [TranslationController::class, 'approveAll'])
+                ->middleware('permission:translations.review')->name('approve-all');
+            Route::patch('{translation}', [TranslationController::class, 'update'])
+                ->middleware('permission:translations.review')->name('update');
+            Route::post('{translation}/approve', [TranslationController::class, 'approve'])
+                ->middleware('permission:translations.review')->name('approve');
+            Route::post('{translation}/reject', [TranslationController::class, 'reject'])
+                ->middleware('permission:translations.review')->name('reject');
+            Route::post('{translation}/regenerate', [TranslationController::class, 'regenerate'])
+                ->middleware('permission:translations.review')->name('regenerate');
+        });
 
         /*
          * Automations. Configuration is a manager decision, so rules require

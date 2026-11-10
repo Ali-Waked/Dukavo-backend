@@ -59,6 +59,7 @@ class StoreService
                     'currency' => $currency,
                     'currency_decimals' => $this->currencies->decimals($currency),
                     'timezone' => $attributes['timezone'] ?? $tenant->timezone,
+                    'enabled_locales' => $attributes['enabled_locales'] ?? null,
                     'is_default' => (bool) ($attributes['is_default'] ?? false),
                 ]);
 

@@ -89,6 +89,11 @@ final class PermissionRegistry
             'use' => 'Use AI assistance and propose actions',
             'approve' => 'Approve, reject and execute AI-proposed actions',
         ],
+        'translations' => [
+            'view' => 'Browse translations and their review status',
+            'generate' => 'Generate AI translations',
+            'review' => 'Edit, approve, reject and regenerate translations',
+        ],
         'users' => [
             'view' => 'Browse tenant users',
             'manage' => 'Invite, update and remove tenant users',
@@ -192,7 +197,7 @@ final class PermissionRegistry
         if ($scope === RoleScope::Platform) {
             return $slug === 'super-admin'
                 ? self::slugs()
-                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use', 'notifications.view'];
+                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use', 'notifications.view', 'translations.view', 'translations.generate', 'translations.review'];
         }
 
         return match ($slug) {
@@ -223,6 +228,7 @@ final class PermissionRegistry
                 'payments.view',
                 'ai.use',
                 'ai.approve',
+                'translations.view',
             ],
             default => ['dashboard.view'],
         };

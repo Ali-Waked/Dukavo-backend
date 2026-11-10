@@ -29,8 +29,19 @@ return [
     */
 
     'locales' => [
-        'supported' => ['en', 'ar'],
+        // The languages the platform can publish. A store enables a subset of
+        // these for its own storefront; the translation assistant targets the
+        // store's enabled list rather than a hardcoded pair.
+        'supported' => [
+            'en', 'ar', 'fr', 'es', 'de', 'it', 'pt', 'nl', 'tr', 'id',
+            'pl', 'sv', 'da', 'ru', 'uk', 'fa', 'ur', 'he', 'hi', 'bn',
+            'th', 'zh', 'ja', 'ko', 'el',
+        ],
         'default' => 'en',
+        // The languages a store starts with before a merchant enables more.
+        // Kept small so the assistant does not offer twenty-five targets to a
+        // shop that only ever publishes English and Arabic.
+        'enabled_default' => ['en', 'ar'],
     ],
 
     /*

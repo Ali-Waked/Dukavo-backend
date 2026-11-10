@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1\Marketing;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\ContentPageResource;
+use App\Http\Resources\PublicContentPageResource;
 use App\Models\ContentPage;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -29,15 +29,18 @@ class ContentPageController extends Controller
 {
     public function show(Request $request, string $key): JsonResponse
     {
-        $page = $this->published($key, $this->preferredLocale($request));
+        $locale = $this->preferredLocale($request);
+        $page = $this->published($key, $locale);
 
+        // No row in this language yet: serve the default-language document
+        // through its approved overlay. When neither exists, the page is a 404.
         if ($page === null) {
             $page = $this->published($key, (string) config('dukavo.locales.default', 'en'));
         }
 
         abort_if($page === null, 404);
 
-        return ApiResponse::success(data: new ContentPageResource($page));
+        return ApiResponse::success(data: new PublicContentPageResource($page));
     }
 
     private function published(string $key, string $locale): ?ContentPage

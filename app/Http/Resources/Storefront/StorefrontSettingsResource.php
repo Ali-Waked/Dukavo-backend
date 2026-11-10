@@ -43,8 +43,13 @@ class StorefrontSettingsResource extends JsonResource
             'storefront_enabled' => $this->storefront_enabled,
             'currency' => $this->currency,
             'locale' => $locale,
+            'enabled_locales' => $this->enabled_locales ?? (array) config('dukavo.locales.enabled_default', ['en', 'ar']),
             'settings' => $settings,
-            'localized_settings' => StorefrontSettings::localized($this->storefront_settings, $locale),
+            'localized_settings' => StorefrontSettings::localized(
+                $this->storefront_settings,
+                $locale,
+                $this->resource->approvedTranslations($locale),
+            ),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }

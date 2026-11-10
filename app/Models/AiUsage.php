@@ -27,6 +27,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'input_tokens',
     'output_tokens',
     'total_tokens',
+    'estimated_cost',
     'latency_ms',
     'provider_response_id',
     'metadata',
@@ -52,6 +53,7 @@ class AiUsage extends Model
             'input_tokens' => 'integer',
             'output_tokens' => 'integer',
             'total_tokens' => 'integer',
+            'estimated_cost' => 'decimal:6',
             'latency_ms' => 'integer',
         ];
     }

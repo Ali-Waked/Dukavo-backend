@@ -26,5 +26,27 @@ final readonly class AiCompletion
         public int $totalTokens = 0,
         public int $latencyMs = 0,
         public ?string $providerResponseId = null,
+        public string $provider = '',
     ) {}
+
+    /**
+     * Attach the provider that served this completion.
+     *
+     * The registry, not the adapter, knows which provider won; this keeps the
+     * answer immutable while still letting the feature record the true source.
+     */
+    public function withProvider(string $provider): self
+    {
+        return new self(
+            text: $this->text,
+            structured: $this->structured,
+            model: $this->model,
+            inputTokens: $this->inputTokens,
+            outputTokens: $this->outputTokens,
+            totalTokens: $this->totalTokens,
+            latencyMs: $this->latencyMs,
+            providerResponseId: $this->providerResponseId,
+            provider: $provider,
+        );
+    }
 }

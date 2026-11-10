@@ -103,18 +103,23 @@ final class StorefrontSettings
      * shopper should only ever see copy they can read.
      *
      * @param  array<string, mixed>|null  $settings
+     * @param  array<string, string>  $overrides  Approved translation overlay keyed by `settings.<field>`.
      * @return array<string, mixed>
      */
-    public static function localized(?array $settings, string $locale): array
+    public static function localized(?array $settings, string $locale, array $overrides = []): array
     {
         $merged = self::merge($settings);
 
         foreach (self::LOCALIZED_FIELDS as $field) {
-            $merged[$field] = LocalizedText::pick(
-                self::stringOrNull($merged[$field] ?? null),
-                self::stringOrNull($merged[$field.'_ar'] ?? null),
-                $locale,
-            );
+            $translated = $overrides['settings.'.$field] ?? null;
+
+            $merged[$field] = is_string($translated) && trim($translated) !== ''
+                ? $translated
+                : LocalizedText::pick(
+                    self::stringOrNull($merged[$field] ?? null),
+                    self::stringOrNull($merged[$field.'_ar'] ?? null),
+                    $locale,
+                );
 
             unset($merged[$field.'_ar']);
         }

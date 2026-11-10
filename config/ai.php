@@ -258,6 +258,16 @@ return [
             'daily_tokens_per_tenant' => (int) env('AI_MERCHANT_COPILOT_DAILY_TOKENS_TENANT', 1000000),
             'repair_attempts' => 1,
         ],
+        'translation' => [
+            'enabled' => (bool) env('AI_FEATURE_TRANSLATION', true),
+            'max_output_tokens' => (int) env('AI_TRANSLATION_MAX_TOKENS', 4000),
+            'temperature' => 0.1,
+            'daily_per_user' => (int) env('AI_TRANSLATION_DAILY_USER', 120),
+            'daily_per_tenant' => (int) env('AI_TRANSLATION_DAILY_TENANT', 1500),
+            'daily_tokens_per_user' => (int) env('AI_TRANSLATION_DAILY_TOKENS_USER', 500000),
+            'daily_tokens_per_tenant' => (int) env('AI_TRANSLATION_DAILY_TOKENS_TENANT', 5000000),
+            'repair_attempts' => 1,
+        ],
     ],
 
     /*
@@ -335,5 +345,27 @@ return [
     'usage' => [
         'table' => 'ai_usage',
         'retention_days' => (int) env('AI_USAGE_RETENTION_DAYS', 90),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pricing
+    |--------------------------------------------------------------------------
+    |
+    | USD per million tokens, used only to estimate a call's cost in the usage
+    | ledger. A model that is not listed records no estimate rather than a
+    | misleading zero. Update this block when a provider changes its prices.
+    |
+    */
+
+    'pricing' => [
+        'grok-4.7' => [
+            'input' => (float) env('AI_PRICE_GROK_INPUT', 3.00),
+            'output' => (float) env('AI_PRICE_GROK_OUTPUT', 15.00),
+        ],
+        'gpt-4o-mini' => [
+            'input' => (float) env('AI_PRICE_OPENAI_MINI_INPUT', 0.15),
+            'output' => (float) env('AI_PRICE_OPENAI_MINI_OUTPUT', 0.60),
+        ],
     ],
 ];

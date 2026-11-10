@@ -8,7 +8,9 @@ use App\Enums\AutomationRuleStatus;
 use App\Enums\AutomationTrigger;
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasTranslations;
 use App\Services\Automation\AutomationDefinition;
+use App\Support\LocalizedText;
 use Database\Factories\AutomationRuleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -37,7 +39,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class AutomationRule extends Model
 {
     /** @use HasFactory<AutomationRuleFactory> */
-    use Auditable, BelongsToTenant, HasFactory, SoftDeletes;
+    use Auditable, BelongsToTenant, HasFactory, HasTranslations, SoftDeletes;
 
     /**
      * @return list<string>
@@ -131,6 +133,18 @@ class AutomationRule extends Model
     public function isTemplateBacked(): bool
     {
         return $this->automation_template_id !== null;
+    }
+
+    /** The best available rule name for the requested locale. */
+    public function localizedName(string $locale): string
+    {
+        return (string) $this->translatedValue('name', $locale, (string) LocalizedText::pick($this->name, null, $locale));
+    }
+
+    /** The best available description, or the canonical value when untranslated. */
+    public function localizedDescription(string $locale): ?string
+    {
+        return $this->translatedValue('description', $locale, $this->description);
     }
 
     public function isActive(): bool

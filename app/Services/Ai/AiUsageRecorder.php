@@ -36,6 +36,7 @@ final class AiUsageRecorder
             'input_tokens' => $completion->inputTokens,
             'output_tokens' => $completion->outputTokens,
             'total_tokens' => $completion->totalTokens,
+            'estimated_cost' => $this->estimateCost($completion),
             'latency_ms' => $completion->latencyMs,
             'provider_response_id' => $completion->providerResponseId,
         ]);
@@ -62,6 +63,36 @@ final class AiUsageRecorder
             'model' => $model,
             'metadata' => ['reason' => $reason] + $metadata,
         ]);
+    }
+
+    /**
+     * A conservative USD estimate from the configured price list.
+     *
+     * Prices are per million tokens. An unlisted model records no estimate
+     * rather than a fabricated zero, so a report never claims a cost it cannot
+     * justify.
+     */
+    private function estimateCost(AiCompletion $completion): ?float
+    {
+        if ($completion->model === '') {
+            return null;
+        }
+
+        // Model ids may contain dots (`grok-4.7`), so the price list is read as
+        // an array and indexed literally. A dotted config path would look for
+        // `ai.pricing.grok-4` -> `7` and silently miss the entry.
+        $pricing = config('ai.pricing');
+
+        if (! is_array($pricing) || ! is_array($pricing[$completion->model] ?? null)) {
+            return null;
+        }
+
+        $pricing = $pricing[$completion->model];
+
+        $input = (float) ($pricing['input'] ?? 0);
+        $output = (float) ($pricing['output'] ?? 0);
+
+        return round((($completion->inputTokens * $input) + ($completion->outputTokens * $output)) / 1_000_000, 6);
     }
 
     /**
