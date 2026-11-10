@@ -262,8 +262,18 @@ return [
     'email' => [
         'logo_url' => env(
             'DUKAVO_EMAIL_LOGO_URL',
-            rtrim((string) env('APP_URL', 'http://localhost'), '/').'/images/email/dukavo-logo.png',
+            rtrim((string) env('APP_URL', 'http://localhost'), '/').'/images/email/dukavo-logo-en.png',
         ),
+        // Mail clients do not reliably apply dark mode, so each recipient
+        // language uses its light artwork. English falls back to `logo_url`
+        // above when no dedicated override is configured.
+        'logo_urls' => [
+            'en' => env('DUKAVO_EMAIL_LOGO_URL_EN'),
+            'ar' => env(
+                'DUKAVO_EMAIL_LOGO_URL_AR',
+                rtrim((string) env('APP_URL', 'http://localhost'), '/').'/images/email/dukavo-logo-ar.png',
+            ),
+        ],
         'logo_width' => (int) env('DUKAVO_EMAIL_LOGO_WIDTH', 168),
         'webhook_secret' => env('DUKAVO_EMAIL_WEBHOOK_SECRET'),
         'support_email' => env('DUKAVO_SUPPORT_EMAIL', env('MAIL_FROM_ADDRESS', 'hello@example.com')),

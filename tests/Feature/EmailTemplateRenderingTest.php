@@ -48,7 +48,8 @@ class EmailTemplateRenderingTest extends TestCase
             ->firstOrFail();
 
         config([
-            'dukavo.email.logo_url' => 'https://cdn.dukavo.test/images/email/dukavo-logo.png',
+            'dukavo.email.logo_url' => 'https://cdn.dukavo.test/images/email/dukavo-logo-en.png',
+            'dukavo.email.logo_urls.ar' => 'https://cdn.dukavo.test/images/email/dukavo-logo-ar.png',
             'dukavo.urls.frontend' => 'https://app.dukavo.test',
         ]);
     }
@@ -73,7 +74,10 @@ class EmailTemplateRenderingTest extends TestCase
 
                 $this->assertNotSame('', $content['heading'], "{$eventKey} has no {$locale} heading.");
                 $this->assertStringContainsString('<!DOCTYPE html>', $html);
-                $this->assertStringContainsString('https://cdn.dukavo.test/images/email/dukavo-logo.png', $html);
+                $logo = $locale === 'ar'
+                    ? 'https://cdn.dukavo.test/images/email/dukavo-logo-ar.png'
+                    : 'https://cdn.dukavo.test/images/email/dukavo-logo-en.png';
+                $this->assertStringContainsString($logo, $html);
                 $this->assertStringContainsString('alt="'.Lang::get('email.brand.name', [], $locale).'"', $html);
                 $this->assertStringContainsString('dir="'.($locale === 'ar' ? 'rtl' : 'ltr').'"', $html);
                 $this->assertStringContainsString('lang="'.$locale.'"', $html);
@@ -100,7 +104,7 @@ class EmailTemplateRenderingTest extends TestCase
         $mailable->assertSeeInHtml('Order items');
         $mailable->assertSeeInHtml('View order');
         $mailable->assertSeeInHtml('dir="ltr"', false);
-        $mailable->assertSeeInHtml('https://cdn.dukavo.test/images/email/dukavo-logo.png', false);
+        $mailable->assertSeeInHtml('https://cdn.dukavo.test/images/email/dukavo-logo-en.png', false);
         $mailable->assertSeeInText($order->order_number);
         $mailable->assertSeeInText('Order details');
         $mailable->assertSeeInText('https://app.dukavo.test/orders/'.$order->order_number);
@@ -231,7 +235,7 @@ class EmailTemplateRenderingTest extends TestCase
         $englishMail->assertSeeInHtml('dir="ltr"', false);
         $englishMail->assertSeeInHtml('Verify email address');
         $englishMail->assertSeeInHtml('https://app.dukavo.test/verify/example', false);
-        $englishMail->assertSeeInHtml('https://cdn.dukavo.test/images/email/dukavo-logo.png', false);
+        $englishMail->assertSeeInHtml('https://cdn.dukavo.test/images/email/dukavo-logo-en.png', false);
         $englishMail->assertSeeInHtml('cannot be turned off');
         $englishMail->assertSeeInText('https://app.dukavo.test/verify/example');
 

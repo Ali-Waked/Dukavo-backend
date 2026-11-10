@@ -48,7 +48,8 @@ class EmailScheduledCommandsTest extends TestCase
             ->firstOrFail();
 
         config([
-            'dukavo.email.logo_url' => 'https://cdn.dukavo.test/images/email/dukavo-logo.png',
+            'dukavo.email.logo_url' => 'https://cdn.dukavo.test/images/email/dukavo-logo-en.png',
+            'dukavo.email.logo_urls.ar' => 'https://cdn.dukavo.test/images/email/dukavo-logo-ar.png',
             'dukavo.urls.frontend' => 'https://app.dukavo.test',
         ]);
     }
@@ -77,7 +78,7 @@ class EmailScheduledCommandsTest extends TestCase
 
         $this->assertStringContainsString('Payment confirmed for ORD-1042', $english);
         $this->assertStringContainsString('dir="ltr"', $english);
-        $this->assertStringContainsString('https://cdn.dukavo.test/images/email/dukavo-logo.png', $english);
+        $this->assertStringContainsString('https://cdn.dukavo.test/images/email/dukavo-logo-en.png', $english);
 
         $this->assertStringContainsString('تم تأكيد الدفع للطلب ORD-1042', $arabic);
         $this->assertStringContainsString('dir="rtl"', $arabic);

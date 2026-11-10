@@ -2,6 +2,8 @@
 
 @php
     $alignment = $locale === 'ar' ? 'right' : 'left';
+    $logoUrl = config('dukavo.email.logo_urls.'.($locale === 'ar' ? 'ar' : 'en'))
+        ?: config('dukavo.email.logo_url');
 @endphp
 
 <tr>
@@ -10,7 +12,7 @@
             <tr>
                 <td align="{{ $alignment }}" style="font-family:'Segoe UI',Arial,sans-serif;">
                     <img
-                        src="{{ config('dukavo.email.logo_url') }}"
+                        src="{{ $logoUrl }}"
                         width="{{ config('dukavo.email.logo_width', 168) }}"
                         alt="{{ __('email.brand.name') }}"
                         style="display:block;border:0;outline:none;text-decoration:none;height:auto;max-width:100%;"
