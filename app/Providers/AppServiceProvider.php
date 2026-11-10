@@ -34,6 +34,8 @@ use App\Models\FaqEntry;
 use App\Models\Newsletter;
 use App\Models\NotificationCampaign;
 use App\Models\Order;
+use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\PricingPlan;
 use App\Models\Product;
 use App\Models\ProductVariant;
@@ -42,6 +44,7 @@ use App\Models\Role;
 use App\Models\ShippingZone;
 use App\Models\StockTransfer;
 use App\Models\Store;
+use App\Models\StorePaymentAccount;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\WhatsappAccount;
@@ -342,6 +345,14 @@ class AppServiceProvider extends ServiceProvider
             ->by('storefront-checkout|'.$request->ip().'|'.$request->route('storeSlug')));
         RateLimiter::for('storefront', fn (Request $request): Limit => Limit::perMinute(120)
             ->by('storefront|'.$request->ip()));
+        // Starting a new hosted payment is a financial action; keep it much
+        // tighter than ordinary storefront polling.
+        RateLimiter::for('storefront-payment', fn (Request $request): Limit => Limit::perMinute(6)
+            ->by('storefront-payment|'.$request->ip().'|'.$request->route('storeSlug')));
+        // Provider callbacks must remain deliverable even during a retry storm,
+        // but an anonymous flood must not reach signature verification for free.
+        RateLimiter::for('payment-webhook', fn (Request $request): Limit => Limit::perMinute(300)
+            ->by('payment-webhook|'.$request->ip().'|'.$request->route('provider')));
 
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
@@ -356,6 +367,9 @@ class AppServiceProvider extends ServiceProvider
             'customer_memory' => CustomerMemory::class,
             'customer_summary' => CustomerSummary::class,
             'order' => Order::class,
+            'payment' => Payment::class,
+            'payment_refund' => PaymentRefund::class,
+            'store_payment_account' => StorePaymentAccount::class,
             'conversation' => Conversation::class,
             'recovery_opportunity' => RecoveryOpportunity::class,
             'stock_transfer' => StockTransfer::class,

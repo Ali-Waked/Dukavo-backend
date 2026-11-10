@@ -47,6 +47,8 @@ use App\Http\Controllers\Api\V1\NotificationDeviceController;
 use App\Http\Controllers\Api\V1\NotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OnboardingController;
 use App\Http\Controllers\Api\V1\OrderController;
+use App\Http\Controllers\Api\V1\Payments\MerchantPaymentController;
+use App\Http\Controllers\Api\V1\Payments\PaymentConnectionController;
 use App\Http\Controllers\Api\V1\PermissionController;
 use App\Http\Controllers\Api\V1\Platform\AutomationTemplateController as PlatformAutomationTemplateController;
 use App\Http\Controllers\Api\V1\Platform\BlogContentImageController;
@@ -58,6 +60,12 @@ use App\Http\Controllers\Api\V1\Platform\NewsletterController as PlatformNewslet
 use App\Http\Controllers\Api\V1\Platform\NewsletterSubscriberController;
 use App\Http\Controllers\Api\V1\Platform\NotificationCampaignController;
 use App\Http\Controllers\Api\V1\Platform\NotificationDeliveryController;
+use App\Http\Controllers\Api\V1\Platform\PaymentCountryController;
+use App\Http\Controllers\Api\V1\Platform\PaymentMethodController;
+use App\Http\Controllers\Api\V1\Platform\PaymentProviderController;
+use App\Http\Controllers\Api\V1\Platform\PaymentProviderCountryController;
+use App\Http\Controllers\Api\V1\Platform\PaymentProviderMethodController;
+use App\Http\Controllers\Api\V1\Platform\PaymentWebhookEventController;
 use App\Http\Controllers\Api\V1\Platform\PlatformDashboardController;
 use App\Http\Controllers\Api\V1\Platform\PlatformInsightsController;
 use App\Http\Controllers\Api\V1\Platform\PricingPlanController;
@@ -81,6 +89,7 @@ use App\Http\Controllers\Api\V1\Translation\TranslationController;
 use App\Http\Controllers\Api\V1\UnsubscribeController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\VoiceMessageController;
+use App\Http\Controllers\Api\V1\Webhook\PaymentWebhookController;
 use App\Http\Controllers\Api\V1\WhatsappAccountController;
 use App\Http\Controllers\Api\Webhook\EmailWebhookController;
 use App\Http\Controllers\Api\Webhook\WhatsappWebhookController;
@@ -155,6 +164,17 @@ Route::prefix('webhooks')->group(function (): void {
     // closed when no secret is configured.
     Route::post('email', EmailWebhookController::class)
         ->name('webhooks.email');
+
+    /*
+     * Payment provider callbacks. The provider cannot present Sanctum or a
+     * tenant header, so the handler identifies the attempt from the signed
+     * payload and verifies the signature with that merchant's own connection.
+     * The dedicated limiter keeps an anonymous flood from reaching the HMAC
+     * code path at unbounded rate.
+     */
+    Route::post('payments/{provider}', PaymentWebhookController::class)
+        ->middleware('throttle:payment-webhook')
+        ->name('webhooks.payments');
 });
 
 /*
@@ -216,6 +236,13 @@ Route::prefix('public')->name('api.public.')->group(function (): void {
             Route::post('checkout', [StorefrontCheckoutController::class, 'store'])
                 ->middleware('throttle:storefront-checkout')->name('checkout.store');
             Route::get('orders/{token}', [StorefrontCheckoutController::class, 'show'])->name('orders.show');
+            // Polling reads database state only; it never multiplies provider
+            // traffic. Starting another attempt has its own tighter limiter.
+            Route::get('orders/{token}/payment', [StorefrontCheckoutController::class, 'show'])
+                ->name('orders.payment.show');
+            Route::post('orders/{token}/payment', [StorefrontCheckoutController::class, 'retryPayment'])
+                ->middleware('throttle:storefront-payment')
+                ->name('orders.payment.retry');
         });
 });
 
@@ -552,6 +579,54 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('newsletters/{newsletter}', [PlatformNewsletterController::class, 'show'])->name('newsletters.show');
         Route::patch('newsletters/{newsletter}', [PlatformNewsletterController::class, 'update'])->name('newsletters.update');
         Route::delete('newsletters/{newsletter}', [PlatformNewsletterController::class, 'destroy'])->name('newsletters.destroy');
+
+        /*
+         * Payment catalogue administration. Platform operators decide which
+         * markets and providers are offered, and can inspect signed webhook
+         * evidence. There is deliberately no route that reads a merchant
+         * connection: credentials belong to the merchant and are write-only.
+         */
+        Route::prefix('payments')->name('payments.')->group(function (): void {
+            Route::get('countries', [PaymentCountryController::class, 'index'])
+                ->middleware('permission:platform_payments.view')->name('countries.index');
+            Route::patch('countries/{country:code}', [PaymentCountryController::class, 'update'])
+                ->middleware('permission:platform_payments.manage')->name('countries.update');
+
+            Route::get('providers', [PaymentProviderController::class, 'index'])
+                ->middleware('permission:platform_payments.view')->name('providers.index');
+            Route::post('providers', [PaymentProviderController::class, 'store'])
+                ->middleware('permission:platform_payments.manage')->name('providers.store');
+            Route::patch('providers/{provider:code}', [PaymentProviderController::class, 'update'])
+                ->middleware('permission:platform_payments.manage')->name('providers.update');
+
+            Route::post('providers/{provider:code}/countries', [PaymentProviderCountryController::class, 'store'])
+                ->middleware('permission:platform_payments.manage')->name('providers.countries.store');
+            Route::patch('providers/{provider:code}/countries/{coverage}', [PaymentProviderCountryController::class, 'update'])
+                ->middleware('permission:platform_payments.manage')->name('providers.countries.update');
+            Route::delete('providers/{provider:code}/countries/{coverage}', [PaymentProviderCountryController::class, 'destroy'])
+                ->middleware('permission:platform_payments.manage')->name('providers.countries.destroy');
+
+            Route::post('providers/{provider:code}/methods', [PaymentProviderMethodController::class, 'store'])
+                ->middleware('permission:platform_payments.manage')->name('providers.methods.store');
+            Route::patch('providers/{provider:code}/methods/{providerMethod}', [PaymentProviderMethodController::class, 'update'])
+                ->middleware('permission:platform_payments.manage')->name('providers.methods.update');
+            Route::delete('providers/{provider:code}/methods/{providerMethod}', [PaymentProviderMethodController::class, 'destroy'])
+                ->middleware('permission:platform_payments.manage')->name('providers.methods.destroy');
+
+            Route::get('methods', [PaymentMethodController::class, 'index'])
+                ->middleware('permission:platform_payments.view')->name('methods.index');
+            Route::post('methods', [PaymentMethodController::class, 'store'])
+                ->middleware('permission:platform_payments.manage')->name('methods.store');
+            Route::patch('methods/{paymentMethod}', [PaymentMethodController::class, 'update'])
+                ->middleware('permission:platform_payments.manage')->name('methods.update');
+            Route::delete('methods/{paymentMethod}', [PaymentMethodController::class, 'destroy'])
+                ->middleware('permission:platform_payments.manage')->name('methods.destroy');
+
+            Route::get('webhook-events', [PaymentWebhookEventController::class, 'index'])
+                ->middleware('permission:platform_payments.view')->name('webhook-events.index');
+            Route::get('webhook-events/{event}', [PaymentWebhookEventController::class, 'show'])
+                ->middleware('permission:platform_payments.view')->name('webhook-events.show');
+        });
     });
 
     /*
@@ -607,6 +682,33 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
             ->middleware('permission:payments.view')->name('stores.payments.show');
         Route::patch('stores/{store}/payments', [PaymentSettingsController::class, 'update'])
             ->middleware('permission:payments.manage')->name('stores.payments.update');
+
+        /*
+         * Provider connections. The secret key is write-only; listing returns
+         * only status and verification evidence. `scopeBindings()` makes a
+         * connection from another store a 404 before the controller runs.
+         */
+        Route::get('stores/{store}/payment-connections', [PaymentConnectionController::class, 'index'])
+            ->middleware('permission:payments.view')->name('stores.payment-connections.index');
+        Route::post('stores/{store}/payment-connections', [PaymentConnectionController::class, 'store'])
+            ->middleware('permission:payments.manage')->name('stores.payment-connections.store');
+        Route::patch('stores/{store}/payment-connections/{account}', [PaymentConnectionController::class, 'update'])
+            ->middleware('permission:payments.manage')->scopeBindings()->name('stores.payment-connections.update');
+        Route::post('stores/{store}/payment-connections/{account}/verify', [PaymentConnectionController::class, 'verify'])
+            ->middleware('permission:payments.manage')->scopeBindings()->name('stores.payment-connections.verify');
+        Route::delete('stores/{store}/payment-connections/{account}', [PaymentConnectionController::class, 'destroy'])
+            ->middleware('permission:payments.manage')->scopeBindings()->name('stores.payment-connections.destroy');
+
+        // Payment attempts and refunds. `payments/{payment}` is tenant-scoped
+        // by the model's global scope, so a foreign id is a 404.
+        Route::get('payments', [MerchantPaymentController::class, 'index'])
+            ->middleware('permission:payments.view')->name('payments.index');
+        Route::get('payments/{payment}', [MerchantPaymentController::class, 'show'])
+            ->middleware('permission:payments.view')->name('payments.show');
+        Route::post('payments/{payment}/sync', [MerchantPaymentController::class, 'sync'])
+            ->middleware('permission:payments.manage')->name('payments.sync');
+        Route::post('payments/{payment}/refunds', [MerchantPaymentController::class, 'refund'])
+            ->middleware('permission:payments.refund')->name('payments.refunds.store');
 
         // Store base currency. Reading the catalogue and previewing a change is
         // a view operation; performing the conversion is a financial write.

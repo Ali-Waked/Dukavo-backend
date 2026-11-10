@@ -29,6 +29,10 @@ class StorefrontCheckoutRequest extends ApiRequest
             'area' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'payment_method' => ['required', Rule::enum(PaymentMethod::class)],
+            // The specific online rail (`card`, `knet`, `benefit`, …). It is
+            // optional when the store has only one eligible online method, and
+            // is always re-resolved against the server-side catalogue.
+            'payment_method_code' => ['nullable', 'string', 'max:40', 'regex:/^[a-z0-9_]+$/'],
             'idempotency_key' => ['required', 'string', 'min:8', 'max:100'],
             'shipping_address' => ['required', 'array'],
             'shipping_address.contact_name' => ['nullable', 'string', 'max:180'],

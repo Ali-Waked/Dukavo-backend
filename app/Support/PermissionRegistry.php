@@ -78,8 +78,9 @@ final class PermissionRegistry
             'manage' => 'Create and edit delivery zones and fees',
         ],
         'payments' => [
-            'view' => 'View the payment methods a store accepts',
-            'manage' => 'Configure payment methods and instructions',
+            'view' => 'View payment methods, provider connections and transactions',
+            'manage' => 'Connect providers and configure payment methods and instructions',
+            'refund' => 'Issue refunds against captured online payments',
         ],
         'settings' => [
             'view' => 'View workspace settings',
@@ -115,6 +116,10 @@ final class PermissionRegistry
         'notifications' => [
             'view' => 'View platform notification campaigns and delivery statistics',
             'manage' => 'Create, schedule, publish and cancel platform notification campaigns',
+        ],
+        'platform_payments' => [
+            'view' => 'View payment providers, countries, methods and webhook evidence',
+            'manage' => 'Enable providers, manage country coverage and payment methods',
         ],
     ];
 
@@ -197,7 +202,7 @@ final class PermissionRegistry
         if ($scope === RoleScope::Platform) {
             return $slug === 'super-admin'
                 ? self::slugs()
-                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use', 'notifications.view', 'translations.view', 'translations.generate', 'translations.review'];
+                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use', 'notifications.view', 'translations.view', 'translations.generate', 'translations.review', 'platform_payments.view', 'platform_payments.manage'];
         }
 
         return match ($slug) {

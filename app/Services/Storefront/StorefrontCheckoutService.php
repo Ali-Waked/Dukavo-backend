@@ -14,6 +14,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
 use App\Services\Orders\OrderService;
+use App\Services\Payments\PaymentSessionService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,7 @@ class StorefrontCheckoutService
         private readonly OrderService $orders,
         private readonly ShippingService $shipping,
         private readonly PaymentService $payments,
+        private readonly PaymentSessionService $sessions,
         private readonly TenantContext $tenants,
     ) {}
 
@@ -53,11 +55,20 @@ class StorefrontCheckoutService
             return $existing;
         }
 
-        try {
-            $order = DB::transaction(function () use ($store, $data, $key): Order {
-                $method = PaymentMethod::from((string) $data['payment_method']);
-                $this->payments->assertAvailable($store, $method);
+        $method = PaymentMethod::from((string) $data['payment_method']);
+        $methodCode = isset($data['payment_method_code']) ? (string) $data['payment_method_code'] : null;
 
+        // Resolve every refusal before any row is written. For online payment
+        // this is also the exact rail the provider will be asked to charge, so
+        // the browser cannot substitute a cheaper or unsupported source.
+        if ($method === PaymentMethod::Online) {
+            $this->payments->onlineOption($store, $methodCode);
+        } else {
+            $this->payments->assertAvailable($store, $method);
+        }
+
+        try {
+            $order = DB::transaction(function () use ($store, $data, $key, $method): Order {
                 $lines = $this->validateLines($store, $data['items'] ?? []);
                 $merchandiseTotal = 0.0;
 
@@ -129,6 +140,19 @@ class StorefrontCheckoutService
         // twice.
         $this->orders->announceCreated($order);
 
+        // The order is committed first. A provider refusal then leaves an
+        // order with a failed attempt that the customer can retry, instead of
+        // rolling back a valid order or pretending the charge succeeded.
+        if ($method === PaymentMethod::Online) {
+            try {
+                $this->sessions->start($order, $methodCode);
+            } catch (BusinessRuleViolation $exception) {
+                report($exception);
+            }
+
+            $order->loadMissing('latestPayment');
+        }
+
         return $order;
     }
 
@@ -137,7 +161,7 @@ class StorefrontCheckoutService
         return Order::query()
             ->where('store_id', $store->getKey())
             ->where('tracking_token', $token)
-            ->with(['items', 'store'])
+            ->with(['items', 'store', 'latestPayment.provider'])
             ->firstOrFail();
     }
 

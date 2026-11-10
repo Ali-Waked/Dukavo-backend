@@ -59,6 +59,14 @@ otherwise.
 - **Customers and orders** — customers with addresses, orders with human
   order numbers (`ORD-000123`), server-recomputed totals, status transitions
   and per-order status history.
+- **Payment hub** — cash on delivery, merchant-configured bank transfer and a
+  provider-independent online layer with a Tap adapter. Platform operators
+  manage all 22 Arab markets, documented provider coverage, capabilities and
+  local rails without a deployment; merchants save encrypted, provider-verified
+  connections per store. Checkout is server-priced, hosted by the provider and
+  confirmed only by a signed webhook or status lookup, never by the browser
+  redirect. Refunds are bounded by the captured charge. See
+  [`docs/DUKAVO_PAYMENT_HUB.md`](docs/DUKAVO_PAYMENT_HUB.md).
 - **Conversations (inbox)** — channel-agnostic threads with search, status and
   owner filters, unread state, assignment, private internal notes, approved
   WhatsApp templates, the 24-hour reply window, failed-message retry, safe
@@ -92,9 +100,14 @@ These are deliberate, documented gaps — do not assume they exist:
   [`config/fortify.php`](config/fortify.php); there is no
   `POST /api/v1/auth/register` route, and a test asserts it stays unroutable.
   Accounts are created by platform operators (or seeded).
-- **Payments / paid subscriptions.** `config/dukavo.php` states that no
-  payment provider has been selected. `pricing_plans` are display records; the
-  platform dashboard reports no billing figures.
+- **Additional payment adapters.** Only Tap has a production adapter. The
+  payment catalogue records MyFatoorah's documented coverage, but its
+  integration is disabled until an adapter exists and is approved. Paymob,
+  HyperPay, Stripe and PayPal are not catalogued; no coverage has been invented
+  for them. See [`docs/DUKAVO_PAYMENT_HUB.md`](docs/DUKAVO_PAYMENT_HUB.md).
+- **Platform subscription billing.** The payment hub charges merchants'
+  customers, not Dukavo's own subscription plans. `pricing_plans` remain display
+  records and `DUKAVO_BILLING_CHECKOUT` stays `false`.
 - **WhatsApp as a notification channel.** The transport exists but is off by
   default (`DUKAVO_NOTIFICATION_WHATSAPP=false`); deliveries are recorded as
   skipped rather than faked.
@@ -324,6 +337,22 @@ never commit a filled-in `.env` (it is git-ignored).
 | `SANCTUM_STATEFUL_DOMAINS` | Domains allowed to use stateful (cookie) auth | `localhost:5173,127.0.0.1:5173,localhost:8000,127.0.0.1:8000` |
 | `VITE_APP_NAME` | Name exposed to the built asset | `${APP_NAME}` |
 
+### Payment hub (optional until a merchant connects a provider)
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `PAYMENT_DEFAULT_PROVIDER` | Provider code used for documentation/default resolution | `tap` |
+| `PAYMENT_CHECKOUT_ENVIRONMENT` | `sandbox` or `live`; checkout ignores connections from the other environment | `sandbox` outside production, `live` in production |
+| `PAYMENT_RETURN_PATH` | SPA route the shopper returns to after hosted checkout | `/shop/{tenant}/{store}/orders/{token}` |
+| `PAYMENT_SESSION_TTL_MINUTES` | How long a hosted attempt stays payable before retry creates a new one; `0` disables | `60` |
+| `TAP_API_BASE_URL` | Tap API host | `https://api.tap.company/v2` |
+| `TAP_TIMEOUT_SECONDS` / `TAP_CONNECT_TIMEOUT_SECONDS` | Outbound HTTP timeouts | `20` / `10` |
+
+Tap merchant credentials (`sk_…`) and webhook secrets are **not** environment
+variables. Each merchant saves them on the store connection screen; the values
+are encrypted at rest, verified by a provider request and never returned by any
+endpoint. Never commit a live key or paste one into `.env`.
+
 ### Mail (optional for local work)
 
 | Variable | Purpose | Default |
@@ -387,7 +416,7 @@ the default mailer is `log` and the default filesystem disk is `local`.
 ## 7. API reference
 
 **Base URL:** `http://127.0.0.1:8000/api` — versioned surface under `/api/v1`.
-**183 routes total, 176 of them under `/api/v1`** (`php artisan route:list`).
+**384 routes total, 375 of them under `/api/v1`** (`php artisan route:list`).
 
 Send `Accept: application/json` on every request. Authenticate either with a
 Sanctum **bearer token** from login, or with the SPA **cookie flow**:
@@ -745,9 +774,31 @@ skipped. In-app notifications are always available through the bell endpoints.
 
 ### Payments
 
-Not integrated. `pricing_plans` exist purely for the marketing/pricing pages;
-`DUKAVO_BILLING_CHECKOUT` stays `false`. Do not document or build checkout
-assumptions on top of this without selecting a provider first.
+The payment hub is implemented and its sandbox flow is covered by tests using a
+faked Tap transport. Tap is the only adapter with code. Its portfolio matrix is
+data, seeded from Tap's own support article: new merchants are accepted in
+Saudi Arabia, the UAE, Kuwait, Bahrain, Qatar and Oman; Egypt and Jordan are
+recorded as transaction-capable but closed to new merchants; Lebanon is closed
+as well. No other Arab market is offered online until another provider is
+approved and its coverage is documented.
+
+Checkout is fail-closed:
+
+- the store needs an active `payment_countries` row and a matching country;
+- the provider must accept new merchants in that country, support charges and
+  settle in the store's currency;
+- the store needs an **active**, provider-verified connection in the deployment's
+  checkout environment;
+- the selected method needs an active provider source id;
+- the order amount is recomputed and normalised on the server;
+- the order only becomes paid after a signed webhook or explicitly requested
+  provider status lookup matches amount, currency and charge reference.
+
+`pricing_plans` and `DUKAVO_BILLING_CHECKOUT` concern Dukavo's own subscription
+billing; they are unrelated to merchant customer payments and remain display
+only. Activation, provider citations, webhook configuration and the final
+implementation report are in
+[`docs/DUKAVO_PAYMENT_HUB.md`](docs/DUKAVO_PAYMENT_HUB.md).
 
 ### Mail
 
@@ -769,9 +820,9 @@ vendor/bin/pint --dirty --format agent   # format changed PHP files only
 vendor/bin/pint                          # format everything
 ```
 
-- **Framework:** PHPUnit 12 (not Pest). 48 feature files + 1 unit file.
+- **Framework:** PHPUnit 12 (not Pest). 87 feature files + 3 unit files.
 - **Result:** the full suite was run for this document —
-  **414 tests, 1548 assertions, all passing** (exit 0) against an in-memory
+  **809 tests, 4350 assertions, all passing** (exit 0) against an in-memory
   SQLite database on PHP 8.5.
 - **Test environment:** `phpunit.xml` sets `APP_ENV=testing`,
   `DB_CONNECTION=sqlite`, `DB_DATABASE=:memory:`, `QUEUE_CONNECTION=sync`,
@@ -829,6 +880,15 @@ artisan command.
   `WHATSAPP_APP_SECRET`, failing closed when unconfigured; the handshake
   accepts only tokens the server already knows and returns plain text with no
   credentials.
+- Payment callbacks are verified per merchant with Tap's `hashstring`
+  HMAC-SHA256 over the documented fields. A callback is recorded before it is
+  applied, its event id is idempotent, and a successful charge must also match
+  the stored amount, currency and provider reference. An invalid signature is
+  stored as failed evidence and cannot move an order to paid.
+- Payment credentials and webhook secrets are encrypted with Laravel's encrypter,
+  hidden from serialisation and audit snapshots, and write-only through merchant
+  endpoints. Platform operators can manage providers, coverage and methods but
+  have no route that reads a merchant secret.
 - Public write endpoints are throttled per IP and carry a honeypot field;
   login is throttled separately.
 - Passwords are hashed with bcrypt; reset/verification tokens are hashed by
@@ -861,8 +921,15 @@ hosting. Verify at least:
    `DUKAVO_CONTACT_EMAIL` set.
 8. WhatsApp: real token, phone number id, App Secret and verify token; confirm
    the handshake and one end-to-end message after each deploy.
-9. `GROK_API_KEY` set only if AI should be enabled.
-10. Log shipping/monitoring for `storage/logs`, plus database backups and a
+9. Payments: run `php artisan db:seed --class=PaymentCatalogSeeder --force`
+   after the migration, confirm `PAYMENT_CHECKOUT_ENVIRONMENT=live` only on the
+   production host, give Tap the public `https://<api-host>/api/v1/webhooks/payments/tap`
+   URL, and save each merchant's live key through the app (never in `.env`).
+   Test one sandbox charge, one signed callback and one refund before enabling
+   online payment for shoppers. See
+   [`docs/DUKAVO_PAYMENT_HUB.md`](docs/DUKAVO_PAYMENT_HUB.md).
+10. `GROK_API_KEY` set only if AI should be enabled.
+11. Log shipping/monitoring for `storage/logs`, plus database backups and a
     tested restore path.
 
 ---

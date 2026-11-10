@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Resources\Storefront;
 
+use App\Enums\PaymentStatus;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -60,6 +61,35 @@ class PublicOrderResource extends JsonResource
                 'email' => $this->store->email,
                 'phone' => $this->store->phone,
             ]),
+            /*
+             * Only the sanitised payment projection is exposed. Provider keys,
+             * client references and raw gateway payloads stay server-side; the
+             * browser needs the hosted checkout URL and enough state to explain
+             * why a retry is or is not allowed.
+             */
+            'payment' => $this->whenLoaded('latestPayment', function (): ?array {
+                $payment = $this->latestPayment;
+
+                if ($payment === null) {
+                    return null;
+                }
+
+                return [
+                    'status' => $payment->status->value,
+                    'status_label' => $payment->status->label(),
+                    'method_code' => $payment->payment_method_code,
+                    'attempt_number' => (int) $payment->attempt_number,
+                    'amount' => (float) $payment->amount,
+                    'currency' => $payment->currency,
+                    'provider_name' => $payment->provider?->name,
+                    'checkout_url' => $payment->status->isSucceeded() ? null : $payment->checkout_url,
+                    'failure_reason' => $payment->failure_reason,
+                    'reference' => $payment->maskedReference(),
+                    'retry_allowed' => $payment->allowsRetry() && $this->payment_status !== PaymentStatus::Paid,
+                    'expires_at' => $payment->expires_at?->toIso8601String(),
+                    'paid_at' => $payment->paid_at?->toIso8601String(),
+                ];
+            }),
             'placed_at' => $this->placed_at?->toIso8601String(),
             'tracking_token' => $this->when($this->includeTrackingToken, fn () => $this->tracking_token),
         ];

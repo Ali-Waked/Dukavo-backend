@@ -9,9 +9,10 @@ use App\Http\Requests\ApiRequest;
 /**
  * Store payment settings.
  *
- * Only cash on delivery is configurable because it is the only method the
- * platform can currently honour. Online payment is reported as unavailable by
- * the service rather than exposed as a setting that would do nothing.
+ * Only the non-provider methods are configurable: cash on delivery and bank
+ * transfer. Online payment is not a switch — it becomes available when a
+ * verified provider connection exists, and is otherwise reported as
+ * unavailable with the reason.
  */
 class UpdatePaymentSettingsRequest extends ApiRequest
 {
@@ -23,6 +24,8 @@ class UpdatePaymentSettingsRequest extends ApiRequest
         return [
             'cod_enabled' => ['sometimes', 'boolean'],
             'cod_instructions' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'bank_transfer_enabled' => ['sometimes', 'boolean'],
+            'bank_transfer_instructions' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ];
     }
 }

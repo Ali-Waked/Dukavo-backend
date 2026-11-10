@@ -32,6 +32,7 @@ class StoreStoreRequest extends ApiRequest
             'status' => ['sometimes', Rule::enum(StoreStatus::class)],
             'email' => ['nullable', 'email:rfc', 'max:190'],
             'phone' => ['nullable', 'string', 'max:32'],
+            'country' => ['nullable', 'string', 'size:2', 'uppercase', Rule::exists('payment_countries', 'code')],
             'currency' => ['nullable', 'string', 'size:3', 'uppercase', Rule::in(array_keys((array) config('dukavo.currencies.supported', [])))],
             'timezone' => ['nullable', 'timezone'],
             'enabled_locales' => ['sometimes', 'nullable', 'array', 'max:25'],

@@ -39,6 +39,7 @@ class StoreResource extends JsonResource
             'status_label' => $this->status->label(),
             'email' => $this->email,
             'phone' => $this->phone,
+            'country' => $this->country,
             'currency' => $this->currency,
             'currency_name' => $currency['name'] ?? null,
             'currency_name_en' => $currency['name_en'] ?? null,

@@ -56,6 +56,7 @@ class StoreService
                     'status' => $attributes['status'] ?? StoreStatus::Active,
                     'email' => $attributes['email'] ?? null,
                     'phone' => $attributes['phone'] ?? null,
+                    'country' => $this->country($attributes['country'] ?? null),
                     'currency' => $currency,
                     'currency_decimals' => $this->currencies->decimals($currency),
                     'timezone' => $attributes['timezone'] ?? $tenant->timezone,
@@ -81,6 +82,10 @@ class StoreService
      */
     public function update(Store $store, array $attributes): Store
     {
+        if (array_key_exists('country', $attributes)) {
+            $attributes['country'] = $this->country($attributes['country']);
+        }
+
         // Clearing the slug keeps the current one; renaming without a slug
         // regenerates it from the new name.
         if (array_key_exists('slug', $attributes) && ($attributes['slug'] === null || $attributes['slug'] === '')) {
@@ -166,6 +171,13 @@ class StoreService
             ->whereKeyNot($store->getKey())
             ->where('is_default', true)
             ->update(['is_default' => false]);
+    }
+
+    private function country(mixed $country): ?string
+    {
+        $country = strtoupper(trim((string) $country));
+
+        return $country === '' ? null : $country;
     }
 
     private function uniqueSlug(Tenant $tenant, string $name, ?int $ignoreId = null): string

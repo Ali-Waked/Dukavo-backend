@@ -162,21 +162,29 @@ class StorefrontSettingsEndpointTest extends TestCase
             ->getJson('/api/v1/tenant/stores/'.$this->store->getKey().'/payments')
             ->assertOk()
             ->assertJsonPath('data.settings.cod_enabled', true)
+            ->assertJsonPath('data.settings.bank_transfer_enabled', false)
             ->assertJsonPath('data.methods.0.code', 'cod')
             ->assertJsonPath('data.methods.0.available', true)
-            ->assertJsonPath('data.methods.1.code', 'online')
+            ->assertJsonPath('data.methods.1.code', 'bank_transfer')
             ->assertJsonPath('data.methods.1.available', false)
-            ->assertJsonPath('data.methods.1.unavailable_reason', 'No online payment provider is configured for this store yet.');
+            ->assertJsonPath('data.methods.2.code', 'online')
+            ->assertJsonPath('data.methods.2.available', false)
+            ->assertJsonPath('data.methods.2.unavailable_reason', 'Set the store country before offering online payment.');
 
         $this->api($this->merchant)
             ->patchJson('/api/v1/tenant/stores/'.$this->store->getKey().'/payments', [
                 'cod_enabled' => false,
                 'cod_instructions' => 'Pay the courier on arrival.',
+                'bank_transfer_enabled' => true,
+                'bank_transfer_instructions' => 'Transfer to account 123 and send the receipt.',
             ])
             ->assertOk()
             ->assertJsonPath('data.settings.cod_enabled', false)
             ->assertJsonPath('data.settings.cod_instructions', 'Pay the courier on arrival.')
-            ->assertJsonPath('data.methods.0.available', false);
+            ->assertJsonPath('data.settings.bank_transfer_enabled', true)
+            ->assertJsonPath('data.settings.bank_transfer_instructions', 'Transfer to account 123 and send the receipt.')
+            ->assertJsonPath('data.methods.0.available', false)
+            ->assertJsonPath('data.methods.1.available', true);
     }
 
     public function test_a_member_without_shipping_manage_cannot_create_a_zone(): void

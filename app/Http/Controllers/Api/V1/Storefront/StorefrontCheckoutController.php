@@ -6,9 +6,10 @@ namespace App\Http\Controllers\Api\V1\Storefront;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Storefront\StorefrontCheckoutRequest;
+use App\Http\Requests\Storefront\StorefrontPaymentRetryRequest;
 use App\Http\Resources\Storefront\PublicOrderResource;
 use App\Models\Store;
-use App\Models\Tenant;
+use App\Services\Payments\PaymentSessionService;
 use App\Services\Storefront\StorefrontCheckoutService;
 use App\Services\Storefront\StorefrontService;
 use App\Support\ApiResponse;
@@ -28,6 +29,7 @@ class StorefrontCheckoutController extends Controller
         private readonly TenantContext $tenants,
         private readonly StorefrontService $storefront,
         private readonly StorefrontCheckoutService $checkout,
+        private readonly PaymentSessionService $sessions,
     ) {}
 
     public function store(StorefrontCheckoutRequest $request, string $tenantSlug, string $storeSlug): JsonResponse
@@ -37,7 +39,10 @@ class StorefrontCheckoutController extends Controller
 
             return ApiResponse::created(
                 'Order placed.',
-                new PublicOrderResource($order->loadMissing(['items', 'store']), includeTrackingToken: true),
+                new PublicOrderResource(
+                    $order->loadMissing(['items', 'store', 'latestPayment.provider']),
+                    includeTrackingToken: true,
+                ),
             );
         });
     }
@@ -48,6 +53,28 @@ class StorefrontCheckoutController extends Controller
             $order = $this->checkout->findByTrackingToken($store, $token);
 
             return ApiResponse::success('', new PublicOrderResource($order));
+        });
+    }
+
+    /**
+     * Start the next attempt for an unpaid online order. The previous attempt
+     * is reused while its hosted page is still open, so a double click cannot
+     * create a second charge.
+     */
+    public function retryPayment(
+        StorefrontPaymentRetryRequest $request,
+        string $tenantSlug,
+        string $storeSlug,
+        string $token,
+    ): JsonResponse {
+        return $this->withStore($tenantSlug, $storeSlug, function (Store $store) use ($request, $token): JsonResponse {
+            $order = $this->checkout->findByTrackingToken($store, $token);
+
+            $this->sessions->retry($order, $request->validated('payment_method_code'));
+
+            $order->loadMissing(['items', 'store', 'latestPayment.provider']);
+
+            return ApiResponse::success('Payment attempt ready.', new PublicOrderResource($order));
         });
     }
 
