@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Ai\Features;
 
+use App\Services\Ai\AiExecutionEngine;
 use App\Services\Ai\AiGuard;
 use App\Services\Ai\AiUsageRecorder;
-use App\Services\Ai\Providers\ProviderRegistry;
+use App\Services\Ai\Exceptions\AiUnavailable;
 use App\Services\Ai\Support\PromptGuard;
+use App\Services\Ai\Support\PromptRenderer;
 use App\Services\Ai\Validation\JsonSchemaValidator;
+use App\Services\Configuration\FeatureFlagService;
 
 /**
  * Translates merchant content into one target language.
@@ -57,13 +60,15 @@ final class TranslationAssistant extends Feature
     ];
 
     public function __construct(
-        ProviderRegistry $providers,
+        AiExecutionEngine $engine,
         AiGuard $guard,
         AiUsageRecorder $usage,
         PromptGuard $prompts,
         JsonSchemaValidator $validator,
+        PromptRenderer $renderer,
+        private readonly FeatureFlagService $features,
     ) {
-        parent::__construct($providers, $guard, $usage, $prompts, $validator);
+        parent::__construct($engine, $guard, $usage, $prompts, $validator, $renderer);
     }
 
     public function useCaseKey(): string
@@ -88,6 +93,10 @@ final class TranslationAssistant extends Feature
         array $protectedTerms = [],
         array $context = [],
     ): array {
+        if ($this->features->disabled('ai_translation')) {
+            throw AiUnavailable::disabled(self::FEATURE);
+        }
+
         $completion = $this->run(
             self::FEATURE,
             $this->systemPrompt($sourceLocale, $targetLocale, $protectedTerms, $context),

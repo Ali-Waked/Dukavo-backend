@@ -74,6 +74,7 @@ class CatalogSeeder extends Seeder
             $isNewProduct = ! $product->exists;
 
             $product->fill([
+                'tenant_id' => $tenant->getKey(),
                 'store_id' => null,
                 'category_id' => DemoCatalog::categoryId($categoryIds, $spec['category']),
                 'name' => $spec['name'],
@@ -103,6 +104,7 @@ class CatalogSeeder extends Seeder
                 $isNewVariant = ! $record->exists;
 
                 $record->fill([
+                    'tenant_id' => $tenant->getKey(),
                     'product_id' => $product->getKey(),
                     'name' => $variant['name'],
                     'sku' => $variant['sku'],
@@ -127,6 +129,7 @@ class CatalogSeeder extends Seeder
                 $isNewImage = ! $image->exists;
 
                 $image->fill([
+                    'tenant_id' => $tenant->getKey(),
                     'product_variant_id' => null,
                     'disk' => 'public',
                     'alt_text' => $spec['name'],
@@ -172,6 +175,7 @@ class CatalogSeeder extends Seeder
             $isNewParent = ! $parent->exists;
 
             $parent->fill([
+                'tenant_id' => $tenant->getKey(),
                 'parent_id' => null,
                 'name' => $root['name'],
                 'name_ar' => $root['name_ar'],
@@ -196,6 +200,7 @@ class CatalogSeeder extends Seeder
                 $isNewChild = ! $category->exists;
 
                 $category->fill([
+                    'tenant_id' => $tenant->getKey(),
                     'parent_id' => $parent->getKey(),
                     'name' => $child['name'],
                     'name_ar' => $child['name_ar'],

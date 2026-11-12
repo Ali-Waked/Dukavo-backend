@@ -30,7 +30,10 @@ final class VoiceMessageRegistrar
 
         $message->loadMissing('conversation');
 
-        if ($message->conversation?->channel !== 'whatsapp') {
+        // Voice transcription is channel-neutral: any provider that delivered
+        // an audio attachment with a stored path can be transcribed. The
+        // WhatsApp pipeline is the historical implementation, not a restriction.
+        if ($message->conversation === null) {
             return null;
         }
 

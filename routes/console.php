@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\HelpSearchLog;
 use App\Models\Tenant;
 use App\Services\Ai\Governance\AiActionService;
 use App\Services\Automation\AutomationScheduleRunner;
@@ -115,6 +116,21 @@ Artisan::command('automation:run-scheduled {--scope=daily : daily, weekly or all
 
     return 0;
 })->purpose('Dispatch due daily, weekly and unpaid-order automation events');
+
+/*
+ * Help Center search logs. Popular and zero-result searches only matter
+ * relatively recently, and every search writes a row, so the log is pruned in
+ * the quiet hours before the analytics window drifts away from what is stored.
+ */
+Artisan::command('help:prune-search-logs {--days=90 : Retention period in days}', function () {
+    $days = max(1, (int) $this->option('days'));
+
+    $pruned = HelpSearchLog::query()
+        ->where('created_at', '<', now()->subDays($days))
+        ->delete();
+
+    $this->info(sprintf('Pruned %d help search log(s) older than %d day(s).', $pruned, $days));
+})->purpose('Prune expired Help Center search logs')->dailyAt('03:40')->withoutOverlapping();
 
 /*
  * Email schedules.

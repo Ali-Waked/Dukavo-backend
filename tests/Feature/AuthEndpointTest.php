@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
@@ -194,6 +195,49 @@ class AuthEndpointTest extends TestCase
         $this->assertContains('orders.create', $response->json('data.permissions'));
         $this->assertContains('inventory.manage', $response->json('data.permissions'));
         $this->assertNotContains('tenants.delete', $response->json('data.permissions'));
+    }
+
+    public function test_me_reports_a_merchant_as_not_being_a_platform_operator(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.user.is_platform_user', false)
+            ->assertJsonPath('data.user.is_platform_operator', false);
+    }
+
+    public function test_me_reports_a_platform_operator_without_an_automatic_tenant(): void
+    {
+        $operator = $this->platformUser('super-admin');
+
+        $this->actingAs($operator, 'sanctum')
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.user.is_platform_user', true)
+            ->assertJsonPath('data.user.is_platform_operator', true)
+            ->assertJsonPath('data.active_tenant', null);
+    }
+
+    public function test_a_platform_operator_with_a_merchant_membership_is_not_dropped_into_it(): void
+    {
+        // This is the regression that hid the platform console: the account
+        // holds a merchant role as well, but `/me` without a tenant header must
+        // stay at platform level so the client can enter the console.
+        $operator = $this->memberOf($this->tenant, 'merchant');
+        $operator->roleAssignments()->create([
+            'role_id' => Role::query()->where('slug', 'dukavo-admin')->value('id'),
+            'tenant_id' => null,
+        ]);
+        $operator = $operator->fresh();
+
+        $this->actingAs($operator, 'sanctum')
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.user.is_platform_user', true)
+            ->assertJsonPath('data.user.is_platform_operator', true)
+            ->assertJsonPath('data.active_tenant', null)
+            ->assertJsonPath('data.tenants.0.slug', $this->tenant->slug);
     }
 
     public function test_the_permission_catalogue_is_grouped_for_the_settings_screen(): void

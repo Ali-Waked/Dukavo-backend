@@ -65,6 +65,10 @@ final class PermissionRegistry
             'view' => 'View WhatsApp accounts',
             'manage' => 'Connect and disconnect WhatsApp accounts',
         ],
+        'integrations' => [
+            'view' => 'View channel integrations, their health and customer identities',
+            'manage' => 'Connect, test, update and disconnect channel integrations',
+        ],
         'stores' => [
             'view' => 'Browse stores',
             'manage' => 'Create and update stores',
@@ -89,6 +93,15 @@ final class PermissionRegistry
         'ai' => [
             'use' => 'Use AI assistance and propose actions',
             'approve' => 'Approve, reject and execute AI-proposed actions',
+        ],
+        'ai_settings' => [
+            'view' => 'View AI settings, usage and preferences for the workspace',
+            'manage' => 'Change AI features and preferences for the workspace',
+        ],
+        'ai_admin' => [
+            'view' => "View Dukavo's AI providers, routing, usage and prompt administration",
+            'manage' => 'Configure providers, credentials, models, task routing and prompts',
+            'rotate' => 'Replace provider API keys and test provider connections',
         ],
         'translations' => [
             'view' => 'Browse translations and their review status',
@@ -120,6 +133,24 @@ final class PermissionRegistry
         'platform_payments' => [
             'view' => 'View payment providers, countries, methods and webhook evidence',
             'manage' => 'Enable providers, manage country coverage and payment methods',
+        ],
+        'integrations_admin' => [
+            'view' => "View Dukavo's channel providers, tenant connections and integration health",
+            'manage' => 'Configure platform channel providers and inspect integration failures',
+        ],
+        'platform_settings' => [
+            'view' => 'View platform configuration, its sources and change history',
+            'update' => 'Change non-secret platform configuration',
+            'secrets' => 'Replace encrypted platform secrets such as mail, storage and WhatsApp credentials',
+            'test' => 'Run integration health probes from Platform Settings',
+        ],
+        'platform_features' => [
+            'view' => 'View platform feature availability',
+            'manage' => 'Enable or disable platform feature availability',
+        ],
+        'platform_security' => [
+            'view' => 'View password, session, rate-limit and maintenance policy',
+            'manage' => 'Change password, session, rate-limit and maintenance policy',
         ],
     ];
 
@@ -202,7 +233,7 @@ final class PermissionRegistry
         if ($scope === RoleScope::Platform) {
             return $slug === 'super-admin'
                 ? self::slugs()
-                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use', 'notifications.view', 'translations.view', 'translations.generate', 'translations.review', 'platform_payments.view', 'platform_payments.manage'];
+                : ['users.view', 'users.manage', 'roles.view', 'roles.manage', 'stores.view', 'stores.manage', 'audit.view', 'ai.use', 'notifications.view', 'translations.view', 'translations.generate', 'translations.review', 'platform_payments.view', 'platform_payments.manage', 'ai_admin.view', 'ai_admin.manage', 'ai_admin.rotate', 'integrations_admin.view', 'integrations_admin.manage', 'platform_settings.view', 'platform_settings.update', 'platform_settings.test', 'platform_features.view', 'platform_features.manage', 'platform_security.view', 'platform_security.manage'];
         }
 
         return match ($slug) {
@@ -227,6 +258,7 @@ final class PermissionRegistry
                 'recovery.manage',
                 'automation.view',
                 'whatsapp.view',
+                'integrations.view',
                 'stores.view',
                 'storefront.view',
                 'shipping.view',

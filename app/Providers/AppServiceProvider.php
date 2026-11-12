@@ -17,8 +17,10 @@ use App\Events\Automation\OrderStatusChanged;
 use App\Events\Automation\RecoveryOpportunityDetected;
 use App\Events\Automation\ScheduledAutomationEvent;
 use App\Listeners\NotifyPasswordReset;
+use App\Listeners\RecordFailedLogin;
 use App\Listeners\RunAutomationRules;
 use App\Models\AiAction;
+use App\Models\AiProvider;
 use App\Models\AutomationRule;
 use App\Models\AutomationTask;
 use App\Models\Bundle;
@@ -31,13 +33,20 @@ use App\Models\Customer;
 use App\Models\CustomerMemory;
 use App\Models\CustomerSummary;
 use App\Models\FaqEntry;
+use App\Models\HelpArticle;
+use App\Models\HelpArticleFeedback;
+use App\Models\HelpCategory;
+use App\Models\HelpTag;
+use App\Models\IntegrationHealthCheck;
 use App\Models\Newsletter;
 use App\Models\NotificationCampaign;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentRefund;
+use App\Models\PlatformSetting;
 use App\Models\PricingPlan;
 use App\Models\Product;
+use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\RecoveryOpportunity;
 use App\Models\Role;
@@ -49,6 +58,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Models\WhatsappAccount;
 use App\Services\Ai\Contracts\SpeechToTextProvider;
+use App\Services\Ai\Contracts\TextToSpeechProvider;
 use App\Services\Ai\Features\BundleExplanationAssistant;
 use App\Services\Ai\Features\ConversationAssistant;
 use App\Services\Ai\Features\ConversationSummary;
@@ -71,7 +81,17 @@ use App\Services\Ai\Providers\AiProviderFactory;
 use App\Services\Ai\Providers\ConfiguredAiProviderFactory;
 use App\Services\Ai\Providers\OpenAiSpeechToTextProvider;
 use App\Services\Ai\Providers\ProviderRegistry;
+use App\Services\Ai\Providers\Tts\TtsProviderFactory;
 use App\Services\Ai\Support\AiCapability;
+use App\Services\Channels\ChannelProviderRegistry;
+use App\Services\Channels\Connectors\EmailConnector;
+use App\Services\Channels\Connectors\MetaMessagingConnector;
+use App\Services\Channels\Connectors\SmsConnector;
+use App\Services\Channels\Connectors\TelegramConnector;
+use App\Services\Channels\Connectors\TikTokConnector;
+use App\Services\Channels\Connectors\WhatsAppConnector;
+use App\Services\Channels\Connectors\XConnector;
+use App\Services\Channels\WebhookSignatureVerifier;
 use App\Services\Channels\WhatsApp\Contracts\WhatsAppGateway;
 use App\Services\Channels\WhatsApp\MetaCloudGateway;
 use App\Services\Currency\Contracts\ExchangeRateProvider;
@@ -84,6 +104,7 @@ use App\Services\Recovery\RecoveryService;
 use App\Services\Translation\TranslationEntityRegistry;
 use App\Services\Translation\TranslationStaleObserver;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -107,6 +128,24 @@ class AppServiceProvider extends ServiceProvider
         // The WhatsApp provider is reached only through its contract, so tests
         // and other channels can substitute an implementation.
         $this->app->bind(WhatsAppGateway::class, MetaCloudGateway::class);
+
+        // Every channel connector is registered here and resolved by key. A
+        // controller, job or service never constructs an adapter itself, so a
+        // test can substitute one and a new provider is one registration.
+        $this->app->singleton(ChannelProviderRegistry::class, function ($app): ChannelProviderRegistry {
+            $verifier = $app->make(WebhookSignatureVerifier::class);
+
+            return new ChannelProviderRegistry([
+                $app->make(WhatsAppConnector::class),
+                $app->make(TelegramConnector::class),
+                new MetaMessagingConnector('instagram', 'instagram', $verifier),
+                new MetaMessagingConnector('messenger', 'page', $verifier),
+                new EmailConnector($verifier),
+                new SmsConnector($verifier),
+                new TikTokConnector($verifier),
+                new XConnector($verifier),
+            ]);
+        });
 
         // Currency configuration is immutable configuration, shared once.
         $this->app->singleton(CurrencyCatalog::class);
@@ -145,6 +184,14 @@ class AppServiceProvider extends ServiceProvider
         // configured OpenAI-compatible endpoint, or fails clearly when unset.
         $this->app->bind(SpeechToTextProvider::class, fn (): SpeechToTextProvider => new OpenAiSpeechToTextProvider(
             (array) config('ai.transcription', []),
+        ));
+
+        // Text-to-speech is the outbound half of the voice loop and is free
+        // first: the factory defaults to a self-hosted Piper or Kokoro engine
+        // and refuses a paid adapter unless the deployment explicitly opts in.
+        // Tests bind a fake here, never a config value.
+        $this->app->bind(TextToSpeechProvider::class, fn (): TextToSpeechProvider => TtsProviderFactory::fromConfig(
+            (array) config('ai.tts', []),
         ));
 
         // The catalogue of use cases. It is a singleton so a descriptor
@@ -282,6 +329,10 @@ class AppServiceProvider extends ServiceProvider
         // must be able to see even if the reset email was deleted.
         Event::listen(PasswordReset::class, NotifyPasswordReset::class);
 
+        // A failed login against a known account belongs in that account's
+        // security history so the owner can spot an attempt they did not make.
+        Event::listen(Failed::class, RecordFailedLogin::class);
+
         // A Super Admin administers the platform itself, so every ability is
         // granted. Tenant isolation still applies through the model scopes —
         // platform operators must still resolve a tenant to read tenant data.
@@ -289,9 +340,36 @@ class AppServiceProvider extends ServiceProvider
             return $user->isSuperAdmin() ? true : null;
         });
 
-        Password::defaults(fn (): Password => $this->app->isProduction()
-            ? Password::min(12)->letters()->mixedCase()->numbers()->symbols()->uncompromised()
-            : Password::min(8)->letters()->mixedCase()->numbers());
+        Password::defaults(function (): Password {
+            // The policy is a platform setting, so it is read at runtime rather
+            // than frozen into a closure at boot. `ConfigurationApplier` writes
+            // the database override into this block before any request runs.
+            $policy = (array) config('dukavo.security.password', []);
+
+            $password = Password::min((int) ($policy['min_length'] ?? 12));
+
+            if ((bool) ($policy['require_letters'] ?? true)) {
+                $password->letters();
+            }
+
+            if ((bool) ($policy['require_mixed_case'] ?? true)) {
+                $password->mixedCase();
+            }
+
+            if ((bool) ($policy['require_numbers'] ?? true)) {
+                $password->numbers();
+            }
+
+            if ((bool) ($policy['require_symbols'] ?? true)) {
+                $password->symbols();
+            }
+
+            if ((bool) ($policy['require_uncompromised'] ?? true)) {
+                $password->uncompromised();
+            }
+
+            return $password;
+        });
 
         // Anonymous write endpoints on the marketing surface. The keys are IP
         // scoped because the caller has no identity to key on; the limits are
@@ -318,6 +396,21 @@ class AppServiceProvider extends ServiceProvider
         // client from probing token values in bulk.
         RateLimiter::for('unsubscribe', fn (Request $request): Limit => Limit::perMinute(10)
             ->by('unsubscribe|'.$request->ip()));
+
+        // Help Center search is type-ahead, so the budget accommodates one
+        // query per keystroke-debounce. Keyed on the signed-in account and,
+        // failing that, the client IP — the public marketing surface and the
+        // authenticated surface share this budget, so a visitor cannot switch
+        // surfaces to double it.
+        RateLimiter::for('help-search', fn (Request $request): Limit => Limit::perMinute(30)
+            ->by('help-search|'.($request->user()?->getKey() ?? $request->ip())));
+
+        // Help feedback writes a row and moves a counter. Duplicate votes are
+        // already refused server-side (per account, per salted IP); the cap
+        // exists so a scripted client cannot hammer the endpoint while the
+        // deduplication lookup runs.
+        RateLimiter::for('help-feedback', fn (Request $request): Limit => Limit::perMinute(5)
+            ->by('help-feedback|'.($request->user()?->getKey() ?? $request->ip())));
 
         // AI endpoints are expensive and identity-bound, so the burst guard is
         // keyed on the authenticated user and, failing that, the client IP.
@@ -354,6 +447,13 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('payment-webhook', fn (Request $request): Limit => Limit::perMinute(300)
             ->by('payment-webhook|'.$request->ip().'|'.$request->route('provider')));
 
+        // Channel webhooks are anonymous and can be chatty (a busy Telegram bot
+        // or a batch of delivery receipts). The limit is per IP and channel so
+        // one noisy provider cannot exhaust another's budget, while leaving room
+        // for a genuine burst. Signature verification happens before any write.
+        RateLimiter::for('channel-webhook', fn (Request $request): Limit => Limit::perMinute(600)
+            ->by('channel-webhook|'.$request->ip().'|'.$request->route('channel')));
+
         Relation::enforceMorphMap([
             'tenant' => Tenant::class,
             'user' => User::class,
@@ -362,6 +462,7 @@ class AppServiceProvider extends ServiceProvider
             'category' => Category::class,
             'product' => Product::class,
             'product_variant' => ProductVariant::class,
+            'product_image' => ProductImage::class,
             'bundle' => Bundle::class,
             'customer' => Customer::class,
             'customer_memory' => CustomerMemory::class,
@@ -383,8 +484,18 @@ class AppServiceProvider extends ServiceProvider
             'notification_campaign' => NotificationCampaign::class,
             'role' => Role::class,
             'ai_action' => AiAction::class,
+            'ai_provider' => AiProvider::class,
             'automation_rule' => AutomationRule::class,
             'automation_task' => AutomationTask::class,
+            // Help Center records that carry ledger translations.
+            'help_category' => HelpCategory::class,
+            'help_article' => HelpArticle::class,
+            'help_tag' => HelpTag::class,
+            'help_article_feedback' => HelpArticleFeedback::class,
+            // Platform configuration writes audit rows against the setting row
+            // so the history page can filter by key without a second table.
+            'platform_setting' => PlatformSetting::class,
+            'integration_health_check' => IntegrationHealthCheck::class,
         ]);
 
         // N+1 detection is free insurance in development and must never reach

@@ -82,6 +82,66 @@ trait HasTranslations
     }
 
     /**
+     * Approved copy using the storefront's deterministic fallback chain.
+     *
+     * A shopper asks for one language but must never see an empty page because
+     * that language is incomplete. The order is:
+     *
+     *  1. the requested locale's approved copy,
+     *  2. the store's own default language,
+     *  3. the platform default language,
+     *  4. any other approved locale, in the platform's supported order,
+     *  5. the canonical value the record already stores.
+     *
+     * Only `published_text` is consulted, so an unapproved draft can never leak
+     * through a fallback.
+     */
+    public function translatedValueWithFallback(
+        string $field,
+        string $locale,
+        ?string $storeDefault = null,
+        ?string $fallback = null,
+    ): ?string {
+        $locale = strtolower(trim($locale));
+        $candidates = $this->fallbackLocales($locale, $storeDefault);
+
+        foreach ($candidates as $candidate) {
+            $value = $this->translatedValue($field, $candidate);
+
+            if ($value !== null && trim($value) !== '') {
+                return $value;
+            }
+        }
+
+        return $fallback;
+    }
+
+    /**
+     * The ordered locales a public read may try, without duplicates.
+     *
+     * @return list<string>
+     */
+    public function fallbackLocales(string $locale, ?string $storeDefault = null): array
+    {
+        $supported = array_map(
+            static fn (mixed $code): string => strtolower(trim((string) $code)),
+            (array) config('dukavo.locales.supported', ['en']),
+        );
+
+        $candidates = [
+            strtolower(trim($locale)),
+            $storeDefault === null ? null : strtolower(trim($storeDefault)),
+            strtolower((string) config('dukavo.locales.default', 'en')),
+            ...$supported,
+        ];
+
+        return array_values(array_unique(array_filter(
+            $candidates,
+            static fn (?string $code): bool => $code !== null && $code !== '',
+        )));
+    }
+
+    /**
      * Whether at least one approved field exists in the given locale.
      */
     public function hasApprovedTranslations(string $locale): bool

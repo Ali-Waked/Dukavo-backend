@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Models\ProductVariant;
+use App\Support\PreferredLocale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,10 +19,15 @@ class ProductVariantResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $locale = $request->filled('locale') ? PreferredLocale::from($request) : null;
+
         return [
             'id' => $this->id,
             'product_id' => $this->product_id,
             'name' => $this->name,
+            'description' => $this->description,
+            'localized_name' => $this->when($locale !== null, fn (): string => $this->resource->localizedName((string) $locale)),
+            'localized_description' => $this->when($locale !== null, fn (): ?string => $this->resource->localizedDescription((string) $locale)),
             'sku' => $this->sku,
             'barcode' => $this->barcode,
             'price' => (float) $this->price,

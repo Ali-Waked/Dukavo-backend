@@ -85,7 +85,7 @@ final class AutomationTemplateService
     public function publish(AutomationTemplate $template, User $actor): AutomationTemplate
     {
         if ($template->status === AutomationTemplateStatus::Archived) {
-            throw BusinessRuleViolation::because('An archived template cannot be published again.');
+            throw BusinessRuleViolation::because('An archived template cannot be published again. Restore it instead.');
         }
 
         if ($template->actions === []) {
@@ -102,8 +102,49 @@ final class AutomationTemplateService
 
     public function archive(AutomationTemplate $template, User $actor): AutomationTemplate
     {
+        // Archiving is idempotent: a repeated request must not fail or create a
+        // second lifecycle record.
+        if ($template->status === AutomationTemplateStatus::Archived) {
+            return $template;
+        }
+
+        if ($template->status !== AutomationTemplateStatus::Active) {
+            throw BusinessRuleViolation::because('Only a published template can be archived.');
+        }
+
         $template->forceFill([
             'status' => AutomationTemplateStatus::Archived,
+            'updated_by' => $actor->getKey(),
+        ])->save();
+
+        return $template->refresh();
+    }
+
+    /**
+     * Return an archived template to the active library.
+     *
+     * Only the status changes. Versions, merchant installations, their rules
+     * and any customisation stay exactly as they were, so a restore never
+     * grants or reactivates automation for a merchant.
+     */
+    public function restore(AutomationTemplate $template, User $actor): AutomationTemplate
+    {
+        // Restoring an already active template is a no-op rather than a
+        // duplicate: callers can retry safely after a flaky response.
+        if ($template->status === AutomationTemplateStatus::Active) {
+            return $template;
+        }
+
+        if ($template->status !== AutomationTemplateStatus::Archived) {
+            throw BusinessRuleViolation::because('Only an archived template can be restored.');
+        }
+
+        if ($template->actions === []) {
+            throw BusinessRuleViolation::because('A template needs at least one action before it can be restored.');
+        }
+
+        $template->forceFill([
+            'status' => AutomationTemplateStatus::Active,
             'updated_by' => $actor->getKey(),
         ])->save();
 

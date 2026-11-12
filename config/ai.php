@@ -46,6 +46,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | BYOK (bring your own key)
+    |--------------------------------------------------------------------------
+    |
+    | Tenants supplying their own provider credentials. Disabled by default:
+    | enabling it is a deliberate platform-owner decision made in the AI
+    | administration, never a default. Both switches must be on before a
+    | merchant's credential is preferred over the platform's — the tenant's
+    | opt-in is stored in their workspace settings and can only ever narrow
+    | what the platform already allows. A tenant credential is isolated to
+    | its workspace: no other tenant, and no platform report, can see or
+    | route through it.
+    |
+    */
+
+    'byok' => [
+        'enabled' => (bool) env('AI_BYOK_ENABLED', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Provider fallback
+    |--------------------------------------------------------------------------
+    |
+    | When a provider cannot serve a request, the eligible providers listed in
+    | `fallback_providers` are tried in order. A platform operator may switch
+    | this off to bound cost; authentication and safety failures are never
+    | retried regardless of this switch.
+    |
+    */
+
+    'fallback' => [
+        'enabled' => (bool) env('AI_FALLBACK_ENABLED', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Providers
     |--------------------------------------------------------------------------
     |
@@ -112,6 +148,65 @@ return [
         'language' => env('AI_TRANSCRIPTION_LANGUAGE'),
         'connect_timeout' => (int) env('AI_TRANSCRIPTION_CONNECT_TIMEOUT', 5),
         'timeout' => (int) env('AI_TRANSCRIPTION_TIMEOUT', 120),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Text to speech
+    |--------------------------------------------------------------------------
+    |
+    | Voice replies are free-first: the default engines (Piper, Kokoro) run on
+    | the installation's own hardware and need no paid key. A hosted engine is
+    | only selectable when `allow_paid` is explicitly turned on, so an
+    | installation can never start billing because a value was left blank.
+    |
+    | Each provider block is independent; switching engines is one env change
+    | and never a code change. `max_chars` bounds how long a spoken reply may be,
+    | because a voice note is listened to rather than skimmed.
+    |
+    */
+
+    'tts' => [
+        'enabled' => (bool) env('AI_TTS_ENABLED', true),
+        'provider' => env('AI_TTS_PROVIDER', 'piper'),
+        'allow_paid' => (bool) env('AI_TTS_ALLOW_PAID', false),
+        'max_chars' => (int) env('AI_TTS_MAX_CHARS', 1200),
+        'daily_per_user' => (int) env('AI_TTS_DAILY_USER', 60),
+        'daily_per_tenant' => (int) env('AI_TTS_DAILY_TENANT', 500),
+        'providers' => [
+            'piper' => [
+                'enabled' => (bool) env('PIPER_TTS_ENABLED', true),
+                'base_url' => env('PIPER_TTS_BASE_URL'),
+                'path' => env('PIPER_TTS_PATH', '/api/tts'),
+                'voice' => env('PIPER_TTS_VOICE', 'en_US-lessac-medium'),
+                'model' => env('PIPER_TTS_MODEL', 'piper'),
+                'format' => env('PIPER_TTS_FORMAT', 'wav'),
+                'connect_timeout' => (int) env('PIPER_TTS_CONNECT_TIMEOUT', 5),
+                'timeout' => (int) env('PIPER_TTS_TIMEOUT', 60),
+            ],
+            'kokoro' => [
+                'enabled' => (bool) env('KOKORO_TTS_ENABLED', true),
+                'base_url' => env('KOKORO_TTS_BASE_URL'),
+                'path' => env('KOKORO_TTS_PATH', '/audio/speech'),
+                'api_key' => env('KOKORO_TTS_API_KEY'),
+                'voice' => env('KOKORO_TTS_VOICE', 'af_heart'),
+                'model' => env('KOKORO_TTS_MODEL', 'kokoro'),
+                'format' => env('KOKORO_TTS_FORMAT', 'opus'),
+                'connect_timeout' => (int) env('KOKORO_TTS_CONNECT_TIMEOUT', 5),
+                'timeout' => (int) env('KOKORO_TTS_TIMEOUT', 60),
+            ],
+            'openai' => [
+                'enabled' => (bool) env('OPENAI_TTS_ENABLED', true),
+                'base_url' => env('OPENAI_TTS_BASE_URL', env('OPENAI_BASE_URL', 'https://api.openai.com/v1')),
+                'path' => env('OPENAI_TTS_PATH', '/audio/speech'),
+                'api_key' => env('OPENAI_TTS_API_KEY', $openAiKey),
+                'voice' => env('OPENAI_TTS_VOICE', 'alloy'),
+                'model' => env('OPENAI_TTS_MODEL', 'gpt-4o-mini-tts'),
+                'format' => env('OPENAI_TTS_FORMAT', 'opus'),
+                'connect_timeout' => (int) env('OPENAI_TTS_CONNECT_TIMEOUT', 5),
+                'timeout' => (int) env('OPENAI_TTS_TIMEOUT', 60),
+            ],
+        ],
     ],
 
     /*

@@ -39,6 +39,9 @@ class PublicStorefrontResource extends JsonResource
             'currency_decimals' => $this->currency_decimals ?? $currency['decimals'] ?? 2,
             'timezone' => $this->timezone,
             'locale' => $locale,
+            'direction' => in_array($locale, ['ar', 'fa', 'he', 'ur'], true) ? 'rtl' : 'ltr',
+            'default_locale' => $this->default_locale ?? (string) config('dukavo.locales.default', 'en'),
+            'enabled_locales' => $this->enabled_locales ?? (array) config('dukavo.locales.enabled_default', ['en', 'ar']),
             'settings' => StorefrontSettings::localized(
                 $this->storefront_settings,
                 $locale,

@@ -6,7 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProfileSessionResource;
-use App\Services\Profile\ProfileService;
+use App\Services\Security\AuthSessionService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,13 +15,14 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 /**
  * The devices the user is signed in on.
  *
- * Each session is one Sanctum personal access token. Sessions are scoped to the
- * caller through `$user->tokens()`, so the `{token}` route param can never be
- * used to revoke another user's session.
+ * Each session is one Sanctum personal access token. Reads and revokes are
+ * scoped through `$user->tokens()`, so the `{token}` route param can never be
+ * used to revoke another user's session. Revocation is enforced by deleting the
+ * token server-side; a client cannot keep using a session it was told about.
  */
 class ProfileSessionController extends Controller
 {
-    public function __construct(private readonly ProfileService $profiles) {}
+    public function __construct(private readonly AuthSessionService $sessions) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -36,20 +37,16 @@ class ProfileSessionController extends Controller
 
     public function destroy(Request $request, string $token): JsonResponse
     {
-        $session = $request->user()->tokens()->whereKey($token)->first();
-
-        if ($session === null) {
+        if (! $this->sessions->revoke($request->user(), $token, $request)) {
             abort(404, 'The requested session was not found.');
         }
-
-        $session->delete();
 
         return ApiResponse::success('Session signed out.');
     }
 
     public function destroyOthers(Request $request): JsonResponse
     {
-        $revoked = $this->profiles->revokeOtherTokens($request->user());
+        $revoked = $this->sessions->revokeOthers($request->user(), $request);
 
         return ApiResponse::success(
             $revoked === 1 ? 'Signed out 1 other session.' : "Signed out {$revoked} other sessions.",

@@ -75,5 +75,56 @@ return [
         ))))),
         'voice_media_retention_days' => (int) env('WHATSAPP_VOICE_MEDIA_RETENTION_DAYS', 30),
     ],
-'setup_token' => env('SETUP_TOKEN'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Omnichannel messaging
+    |--------------------------------------------------------------------------
+    |
+    | Provider-wide defaults for the channel layer. Per-tenant credentials live
+    | encrypted on `channel_connections`; these values only back the platform's
+    | own app registrations and the hard limits applied to every attachment.
+    |
+    | `meta` covers Instagram and Messenger (and mirrors the WhatsApp app
+    | secret); `telegram` covers the Bot API; `email` and `sms` hold the shared
+    | webhook secrets for their generic receipt endpoints.
+    |
+    */
+
+    'channels' => [
+        'media_max_bytes' => (int) env('CHANNEL_MEDIA_MAX_BYTES', 25 * 1024 * 1024),
+    ],
+
+    'meta' => [
+        'app_secret' => env('META_APP_SECRET', env('WHATSAPP_APP_SECRET')),
+        'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN', env('WHATSAPP_WEBHOOK_VERIFY_TOKEN')),
+        'graph_version' => env('META_GRAPH_VERSION', env('WHATSAPP_CLOUD_API_VERSION', 'v26.0')),
+        'graph_url' => env('META_GRAPH_URL', 'https://graph.facebook.com'),
+        'media_max_bytes' => (int) env('META_MEDIA_MAX_BYTES', 25 * 1024 * 1024),
+    ],
+
+    'telegram' => [
+        'api_base_url' => env('TELEGRAM_API_BASE_URL', 'https://api.telegram.org'),
+        'file_base_url' => env('TELEGRAM_FILE_BASE_URL', 'https://api.telegram.org'),
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        'media_max_bytes' => (int) env('TELEGRAM_MEDIA_MAX_BYTES', 20 * 1024 * 1024),
+    ],
+
+    'email' => [
+        'webhook_secret' => env('EMAIL_CHANNEL_WEBHOOK_SECRET'),
+    ],
+
+    'sms' => [
+        'webhook_secret' => env('SMS_WEBHOOK_SECRET'),
+    ],
+
+    'tiktok' => [
+        'client_secret' => env('TIKTOK_CLIENT_SECRET'),
+    ],
+
+    'x' => [
+        'api_secret' => env('X_API_SECRET'),
+    ],
+
+    'setup_token' => env('SETUP_TOKEN'),
 ];

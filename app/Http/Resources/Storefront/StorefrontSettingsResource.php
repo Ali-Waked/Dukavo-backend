@@ -44,6 +44,7 @@ class StorefrontSettingsResource extends JsonResource
             'currency' => $this->currency,
             'locale' => $locale,
             'enabled_locales' => $this->enabled_locales ?? (array) config('dukavo.locales.enabled_default', ['en', 'ar']),
+            'default_locale' => $this->default_locale ?? (string) config('dukavo.locales.default', 'en'),
             'settings' => $settings,
             'localized_settings' => StorefrontSettings::localized(
                 $this->storefront_settings,

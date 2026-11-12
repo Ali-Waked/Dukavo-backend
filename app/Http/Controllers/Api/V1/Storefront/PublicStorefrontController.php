@@ -15,6 +15,7 @@ use App\Services\Storefront\PaymentService;
 use App\Services\Storefront\ShippingService;
 use App\Services\Storefront\StorefrontService;
 use App\Support\ApiResponse;
+use App\Support\PreferredLocale;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -53,22 +54,27 @@ class PublicStorefrontController extends Controller
 
     public function products(Request $request, string $tenantSlug, string $storeSlug): AnonymousResourceCollection
     {
+        $locale = PreferredLocale::from($request);
+
         return $this->withStore($tenantSlug, $storeSlug, fn (Store $store) => PublicProductResource::collection(
             $this->storefront->products($store, [
                 'search' => $request->filled('search') ? $request->string('search')->toString() : null,
                 'category' => $request->filled('category') ? $request->string('category')->toString() : null,
                 'sort' => $request->filled('sort') ? $request->string('sort')->toString() : null,
                 'per_page' => $request->integer('per_page', 24),
+                'locale' => $locale,
             ]),
         ));
     }
 
-    public function product(string $tenantSlug, string $storeSlug, string $productSlug): JsonResource
+    public function product(Request $request, string $tenantSlug, string $storeSlug, string $productSlug): JsonResource
     {
+        $locale = PreferredLocale::from($request);
+
         return $this->withStore(
             $tenantSlug,
             $storeSlug,
-            fn (Store $store) => new PublicProductResource($this->storefront->product($store, $productSlug)),
+            fn (Store $store) => new PublicProductResource($this->storefront->product($store, $productSlug, $locale)),
         );
     }
 

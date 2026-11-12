@@ -33,6 +33,7 @@ class ProductImageController extends Controller
             $product,
             $request->file('images'),
             $request->validated('alt_text') ?? [],
+            $request->validated('caption') ?? [],
         );
 
         return ApiResponse::created('Images uploaded.', ProductImageResource::collection($created));

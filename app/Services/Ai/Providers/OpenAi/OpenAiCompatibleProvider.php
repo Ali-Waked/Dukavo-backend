@@ -9,6 +9,7 @@ use App\Services\Ai\Data\AiCompletion;
 use App\Services\Ai\Data\AiMessage;
 use App\Services\Ai\Exceptions\AiRequestFailed;
 use App\Services\Ai\Exceptions\AiUnavailable;
+use App\Services\Ai\Providers\ProviderErrorMapper;
 use App\Services\Ai\Support\AiCapability;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
@@ -45,11 +46,43 @@ final class OpenAiCompatibleProvider implements AiProvider
         private readonly string $defaultModel,
         private readonly array $transport = [],
         private readonly bool $nativeSchema = false,
+        private readonly string $providerKey = 'openai',
     ) {}
 
     public function provider(): string
     {
-        return 'openai';
+        return $this->providerKey;
+    }
+
+    /**
+     * A cheap credential check for the management UI: a one-token completion.
+     *
+     * Never returns the key; only whether the provider accepted it.
+     */
+    public function testConnection(): array
+    {
+        $startedAt = hrtime(true);
+
+        if (! $this->isConfigured()) {
+            return ['ok' => false, 'status' => 0, 'latency_ms' => 0, 'reason' => 'not_configured'];
+        }
+
+        try {
+            $response = $this->client()
+                ->post($this->url(), [
+                    'model' => $this->defaultModel,
+                    'messages' => [['role' => 'user', 'content' => 'ping']],
+                    'max_completion_tokens' => 8,
+                ]);
+
+            return [
+                'ok' => $response->successful(),
+                'status' => $response->status(),
+                'latency_ms' => (int) round((hrtime(true) - $startedAt) / 1_000_000),
+            ];
+        } catch (Throwable) {
+            return ['ok' => false, 'status' => 0, 'latency_ms' => (int) round((hrtime(true) - $startedAt) / 1_000_000), 'reason' => 'connection'];
+        }
     }
 
     /**
@@ -115,8 +148,8 @@ final class OpenAiCompatibleProvider implements AiProvider
             $response = $this->client()
                 ->retry($this->backoffDelays(), 0, $this->shouldRetry(...))
                 ->post($this->url(), $payload);
-        } catch (ConnectionException $exception) {
-            throw AiUnavailable::provider('connection', ['message' => $exception->getMessage()]);
+        } catch (ConnectionException) {
+            throw AiUnavailable::provider('connection', ['provider' => $this->providerKey]);
         } catch (RequestException $exception) {
             throw $this->mapFailure($exception->response);
         }
@@ -243,15 +276,7 @@ final class OpenAiCompatibleProvider implements AiProvider
 
     private function mapFailure(Response $response): AiUnavailable|AiRequestFailed
     {
-        $status = $response->status();
-
-        if ($status === 429 || $response->serverError()) {
-            return AiUnavailable::provider('provider_status', ['provider_status' => $status]);
-        }
-
-        $providerCode = $response->json('error.code') ?? $response->json('code');
-
-        return AiRequestFailed::providerRejected($status, is_string($providerCode) ? $providerCode : null);
+        return ProviderErrorMapper::map($response, $this->providerKey);
     }
 
     private function completion(Response $response, bool $expectsStructure, int $latencyMs): AiCompletion

@@ -79,6 +79,17 @@ class Customer extends Model
     }
 
     /**
+     * Provider identities (WhatsApp number, Telegram chat, Instagram user …)
+     * linked to this customer. One customer may have several.
+     *
+     * @return HasMany<CustomerIdentity, $this>
+     */
+    public function identities(): HasMany
+    {
+        return $this->hasMany(CustomerIdentity::class);
+    }
+
+    /**
      * @return HasMany<RecoveryOpportunity, $this>
      */
     public function recoveryOpportunities(): HasMany

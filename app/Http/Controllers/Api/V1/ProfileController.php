@@ -9,6 +9,7 @@ use App\Http\Requests\Profile\UpdateAvatarRequest;
 use App\Http\Requests\Profile\UpdatePasswordRequest;
 use App\Http\Requests\Profile\UpdateProfileRequest;
 use App\Http\Resources\ProfileResource;
+use App\Services\Account\AccountOverviewService;
 use App\Services\Profile\ProfileService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -24,11 +25,24 @@ use Illuminate\Http\Request;
  */
 class ProfileController extends Controller
 {
-    public function __construct(private readonly ProfileService $profiles) {}
+    public function __construct(
+        private readonly ProfileService $profiles,
+        private readonly AccountOverviewService $overview,
+    ) {}
 
     public function show(Request $request): ProfileResource
     {
         return new ProfileResource($request->user());
+    }
+
+    /**
+     * The personal account summary: membership, profile completeness and
+     * security posture. It never includes merchant sales, revenue, orders or
+     * profit, and every workspace figure is scoped to the caller's memberships.
+     */
+    public function overview(Request $request): JsonResponse
+    {
+        return ApiResponse::success('Account overview loaded.', $this->overview->for($request->user()));
     }
 
     public function update(UpdateProfileRequest $request): ProfileResource

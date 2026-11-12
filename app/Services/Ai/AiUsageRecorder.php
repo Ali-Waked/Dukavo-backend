@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services\Ai;
 
+use App\Enums\AiErrorCategory;
+use App\Enums\AiTask;
 use App\Models\AiUsage;
 use App\Services\Ai\Data\AiCompletion;
 
 /**
- * Writes the usage rows that back the daily limits.
+ * Writes the usage rows that back the daily limits and the cost reports.
  *
  * Recording is best-effort accounting, never part of the answer contract: a
  * failure here must not turn a successful AI call into an error for the user,
@@ -16,6 +18,11 @@ use App\Services\Ai\Data\AiCompletion;
  *
  * Only counts and identifiers are written. No prompt, no answer, no customer
  * data and no credential ever reaches this table.
+ *
+ * Every call — successful, failed, retried or served by a fallback provider —
+ * is a row: retries and failovers cannot dodge accounting, because the
+ * execution engine writes one row per provider attempt, tied together by the
+ * correlation id.
  */
 final class AiUsageRecorder
 {
@@ -25,18 +32,25 @@ final class AiUsageRecorder
         ?int $tenantId,
         ?int $userId,
         ?string $provider = null,
+        ?AiTask $task = null,
+        ?string $correlationId = null,
+        int $fallbackAttempts = 0,
+        bool $cacheHit = false,
     ): void {
         $this->write([
             'tenant_id' => $tenantId,
             'user_id' => $userId,
             'feature' => $feature,
-            'status' => 'success',
-            'provider' => $provider,
+            'task' => ($task ?? AiTask::forFeatureKey($feature))->value,
+            'correlation_id' => $correlationId,
+            'provider' => $provider ?? ($completion->provider !== '' ? $completion->provider : null),
             'model' => $completion->model,
             'input_tokens' => $completion->inputTokens,
             'output_tokens' => $completion->outputTokens,
             'total_tokens' => $completion->totalTokens,
+            'fallback_attempts' => $fallbackAttempts,
             'estimated_cost' => $this->estimateCost($completion),
+            'cache_hit' => $cacheHit,
             'latency_ms' => $completion->latencyMs,
             'provider_response_id' => $completion->providerResponseId,
         ]);
@@ -53,14 +67,22 @@ final class AiUsageRecorder
         ?string $model = null,
         array $metadata = [],
         ?string $provider = null,
+        ?AiTask $task = null,
+        ?string $correlationId = null,
+        ?AiErrorCategory $errorCategory = null,
+        int $fallbackAttempts = 0,
     ): void {
         $this->write([
             'tenant_id' => $tenantId,
             'user_id' => $userId,
             'feature' => $feature,
+            'task' => ($task ?? AiTask::forFeatureKey($feature))->value,
+            'correlation_id' => $correlationId,
             'status' => 'failed',
+            'error_category' => $errorCategory?->value,
             'provider' => $provider,
             'model' => $model,
+            'fallback_attempts' => $fallbackAttempts,
             'metadata' => ['reason' => $reason] + $metadata,
         ]);
     }
@@ -70,7 +92,8 @@ final class AiUsageRecorder
      *
      * Prices are per million tokens. An unlisted model records no estimate
      * rather than a fabricated zero, so a report never claims a cost it cannot
-     * justify.
+     * justify. A free provider records no estimate either: "free" is a rate
+     * limit away from "billed", never a licence for unlimited calls.
      */
     private function estimateCost(AiCompletion $completion): ?float
     {

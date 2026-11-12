@@ -7,6 +7,7 @@ namespace App\Http\Requests\Stores;
 use App\Enums\StoreStatus;
 use App\Http\Requests\ApiRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * Creating a store.
@@ -37,7 +38,28 @@ class StoreStoreRequest extends ApiRequest
             'timezone' => ['nullable', 'timezone'],
             'enabled_locales' => ['sometimes', 'nullable', 'array', 'max:25'],
             'enabled_locales.*' => ['required', 'string', Rule::in((array) config('dukavo.locales.supported', ['en']))],
+            'default_locale' => ['sometimes', 'nullable', 'string', Rule::in((array) config('dukavo.locales.supported', ['en']))],
             'is_default' => ['sometimes', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $default = $this->input('default_locale');
+
+            if (! is_string($default) || $default === '') {
+                return;
+            }
+
+            $enabled = $this->input('enabled_locales');
+            $enabled = is_array($enabled) && $enabled !== []
+                ? $enabled
+                : (array) config('dukavo.locales.enabled_default', ['en', 'ar']);
+
+            if (! in_array($default, $enabled, true)) {
+                $validator->errors()->add('default_locale', 'The default language must be one of the enabled languages.');
+            }
+        });
     }
 }

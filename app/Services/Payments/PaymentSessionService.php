@@ -15,6 +15,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentProvider;
 use App\Models\StorePaymentAccount;
+use App\Services\Configuration\FeatureFlagService;
 use App\Services\Payments\Data\PaymentChargeRequest;
 use App\Services\Payments\Data\PaymentChargeResult;
 use App\Services\Payments\Data\PaymentOption;
@@ -39,10 +40,15 @@ class PaymentSessionService
         private readonly PaymentProviderManager $providers,
         private readonly PaymentLedgerService $ledger,
         private readonly PaymentStatusService $statuses,
+        private readonly FeatureFlagService $features,
     ) {}
 
     public function start(Order $order, ?string $methodCode = null): Payment
     {
+        if ($this->features->disabled('online_payments')) {
+            throw BusinessRuleViolation::because('Online payments are currently disabled by the platform.');
+        }
+
         if ($order->payment_method !== PaymentMethod::Online) {
             throw BusinessRuleViolation::because('This order was not placed with online payment.');
         }
@@ -81,6 +87,10 @@ class PaymentSessionService
      */
     public function retry(Order $order, ?string $methodCode = null): Payment
     {
+        if ($this->features->disabled('online_payments')) {
+            throw BusinessRuleViolation::because('Online payments are currently disabled by the platform.');
+        }
+
         if ($order->payment_status === OrderPaymentStatus::Paid) {
             throw BusinessRuleViolation::because('This order has already been paid.');
         }

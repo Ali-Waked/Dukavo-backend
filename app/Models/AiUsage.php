@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\AiErrorCategory;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -21,13 +22,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'tenant_id',
     'user_id',
     'feature',
+    'task',
+    'correlation_id',
     'provider',
     'status',
+    'error_category',
     'model',
     'input_tokens',
     'output_tokens',
     'total_tokens',
+    'fallback_attempts',
     'estimated_cost',
+    'cache_hit',
     'latency_ms',
     'provider_response_id',
     'metadata',
@@ -53,6 +59,9 @@ class AiUsage extends Model
             'input_tokens' => 'integer',
             'output_tokens' => 'integer',
             'total_tokens' => 'integer',
+            'fallback_attempts' => 'integer',
+            'cache_hit' => 'boolean',
+            'error_category' => AiErrorCategory::class,
             'estimated_cost' => 'decimal:6',
             'latency_ms' => 'integer',
         ];

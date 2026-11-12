@@ -35,6 +35,9 @@ final class EmailTemplateCatalog
         'password_changed' => ['name'],
         'new_device' => ['name', 'device', 'time', 'ip_address'],
         'role_changed' => ['name', 'tenant', 'role'],
+        'two_factor_enabled' => ['name'],
+        'two_factor_disabled' => ['name'],
+        'recovery_codes_regenerated' => ['name'],
     ];
 
     /**

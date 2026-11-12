@@ -137,7 +137,7 @@ final class EmailContentBuilder
 
         $notes = [];
         $securityNote = null;
-        $tone = in_array($template, ['new_device', 'password_changed'], true) ? 'warning' : 'success';
+        $tone = in_array($template, ['new_device', 'password_changed', 'two_factor_disabled'], true) ? 'warning' : 'success';
 
         if ($template === 'password_changed') {
             $securityNote = $this->line('account.password_changed_note', $locale);
@@ -145,6 +145,18 @@ final class EmailContentBuilder
 
         if ($template === 'new_device') {
             $securityNote = $this->line('account.new_device_note', $locale);
+        }
+
+        if ($template === 'two_factor_enabled') {
+            $securityNote = $this->line('account.two_factor_enabled_note', $locale);
+        }
+
+        if ($template === 'two_factor_disabled') {
+            $securityNote = $this->line('account.two_factor_disabled_note', $locale);
+        }
+
+        if ($template === 'recovery_codes_regenerated') {
+            $securityNote = $this->line('account.recovery_codes_regenerated_note', $locale);
         }
 
         if ($securityNote === null) {
@@ -882,7 +894,8 @@ final class EmailContentBuilder
     private function accountHeading(string $template, string $locale, array $data): string
     {
         $key = match ($template) {
-            'welcome', 'invitation', 'verify', 'reset', 'password_changed', 'new_device', 'role_changed' => 'account.'.$template.'_heading',
+            'welcome', 'invitation', 'verify', 'reset', 'password_changed', 'new_device', 'role_changed',
+            'two_factor_enabled', 'two_factor_disabled', 'recovery_codes_regenerated' => 'account.'.$template.'_heading',
             default => null,
         };
 
@@ -897,6 +910,7 @@ final class EmailContentBuilder
     {
         return in_array($template, [
             'welcome', 'invitation', 'verify', 'reset', 'password_changed', 'new_device', 'role_changed',
+            'two_factor_enabled', 'two_factor_disabled', 'recovery_codes_regenerated',
         ], true);
     }
 

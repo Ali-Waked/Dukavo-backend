@@ -7,6 +7,7 @@ namespace App\Services\Marketing;
 use App\Enums\NewsletterStatus;
 use App\Http\Requests\Marketing\SubscribeNewsletterRequest;
 use App\Models\NewsletterSubscriber;
+use App\Services\Configuration\FeatureFlagService;
 use Illuminate\Database\UniqueConstraintViolationException;
 
 /**
@@ -24,12 +25,20 @@ use Illuminate\Database\UniqueConstraintViolationException;
  */
 class NewsletterService
 {
+    public function __construct(private readonly FeatureFlagService $features) {}
+
     /**
      * Record a subscription. `$attributes` is validated, already-normalised
-     * input from {@see SubscribeNewsletterRequest}.
+     * input from {@see SubscribeNewsletterRequest}. A platform that has
+     * withdrawn the newsletter accepts the request without storing anything, so
+     * the public endpoint cannot be used to probe whether the capability is on.
      */
-    public function subscribe(array $attributes): NewsletterSubscriber
+    public function subscribe(array $attributes): ?NewsletterSubscriber
     {
+        if ($this->features->disabled('newsletter')) {
+            return null;
+        }
+
         try {
             return NewsletterSubscriber::query()->create([
                 'email' => $attributes['email'],
@@ -52,6 +61,10 @@ class NewsletterService
      */
     public function unsubscribe(string $email): ?NewsletterSubscriber
     {
+        if ($this->features->disabled('newsletter')) {
+            return null;
+        }
+
         $subscriber = NewsletterSubscriber::query()->where('email', $email)->first();
 
         if (! $subscriber instanceof NewsletterSubscriber) {

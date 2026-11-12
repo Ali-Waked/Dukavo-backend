@@ -42,6 +42,9 @@ final class AccountEmailService
         'password_changed',
         'new_device',
         'role_changed',
+        'two_factor_enabled',
+        'two_factor_disabled',
+        'recovery_codes_regenerated',
     ];
 
     /**

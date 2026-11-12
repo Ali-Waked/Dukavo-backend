@@ -30,14 +30,19 @@ use App\Http\Controllers\Api\V1\ConversationEventController;
 use App\Http\Controllers\Api\V1\CurrencyController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\CustomerCrmController;
+use App\Http\Controllers\Api\V1\CustomerIdentityController;
 use App\Http\Controllers\Api\V1\CustomerMemoryController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\Help\HelpCenterController as AuthenticatedHelpCenterController;
+use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\InventoryController;
 use App\Http\Controllers\Api\V1\InventoryIntelligenceController;
+use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\Marketing\ContactController;
 use App\Http\Controllers\Api\V1\Marketing\ContentPageController as MarketingContentPageController;
 use App\Http\Controllers\Api\V1\Marketing\FaqController;
 use App\Http\Controllers\Api\V1\Marketing\FeatureController;
+use App\Http\Controllers\Api\V1\Marketing\HelpCenterController as MarketingHelpCenterController;
 use App\Http\Controllers\Api\V1\Marketing\NewsletterArticleController as MarketingNewsletterArticleController;
 use App\Http\Controllers\Api\V1\Marketing\NewsletterController;
 use App\Http\Controllers\Api\V1\Marketing\PricingController;
@@ -50,12 +55,28 @@ use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\Payments\MerchantPaymentController;
 use App\Http\Controllers\Api\V1\Payments\PaymentConnectionController;
 use App\Http\Controllers\Api\V1\PermissionController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiActivityLogController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiAdminOverviewController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiAdminSettingsController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiModelController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiPromptTemplateController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiProviderController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiProviderCredentialController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiTaskController;
+use App\Http\Controllers\Api\V1\Platform\Ai\AiUsageController;
 use App\Http\Controllers\Api\V1\Platform\AutomationTemplateController as PlatformAutomationTemplateController;
 use App\Http\Controllers\Api\V1\Platform\BlogContentImageController;
 use App\Http\Controllers\Api\V1\Platform\ContactMessageController;
 use App\Http\Controllers\Api\V1\Platform\ContentPageController as PlatformContentPageController;
 use App\Http\Controllers\Api\V1\Platform\EmailTemplateController;
 use App\Http\Controllers\Api\V1\Platform\FaqEntryController;
+use App\Http\Controllers\Api\V1\Platform\HelpAnalyticsController;
+use App\Http\Controllers\Api\V1\Platform\HelpArticleController as PlatformHelpArticleController;
+use App\Http\Controllers\Api\V1\Platform\HelpCategoryController as PlatformHelpCategoryController;
+use App\Http\Controllers\Api\V1\Platform\HelpContentImageController;
+use App\Http\Controllers\Api\V1\Platform\HelpFeedbackController;
+use App\Http\Controllers\Api\V1\Platform\HelpTagController;
+use App\Http\Controllers\Api\V1\Platform\IntegrationController as PlatformIntegrationController;
 use App\Http\Controllers\Api\V1\Platform\NewsletterController as PlatformNewsletterController;
 use App\Http\Controllers\Api\V1\Platform\NewsletterSubscriberController;
 use App\Http\Controllers\Api\V1\Platform\NotificationCampaignController;
@@ -67,13 +88,21 @@ use App\Http\Controllers\Api\V1\Platform\PaymentProviderCountryController;
 use App\Http\Controllers\Api\V1\Platform\PaymentProviderMethodController;
 use App\Http\Controllers\Api\V1\Platform\PaymentWebhookEventController;
 use App\Http\Controllers\Api\V1\Platform\PlatformDashboardController;
+use App\Http\Controllers\Api\V1\Platform\PlatformFeatureFlagController;
 use App\Http\Controllers\Api\V1\Platform\PlatformInsightsController;
+use App\Http\Controllers\Api\V1\Platform\PlatformIntegrationHealthController;
+use App\Http\Controllers\Api\V1\Platform\PlatformSettingController;
+use App\Http\Controllers\Api\V1\Platform\PlatformSettingHistoryController;
+use App\Http\Controllers\Api\V1\Platform\PlatformSystemController;
 use App\Http\Controllers\Api\V1\Platform\PricingPlanController;
 use App\Http\Controllers\Api\V1\Platform\TenantController;
 use App\Http\Controllers\Api\V1\Platform\UserController as PlatformUserController;
 use App\Http\Controllers\Api\V1\Platform\WaitlistEntryController;
 use App\Http\Controllers\Api\V1\ProfileController;
+use App\Http\Controllers\Api\V1\ProfileOnboardingController;
+use App\Http\Controllers\Api\V1\ProfileSecurityController;
 use App\Http\Controllers\Api\V1\ProfileSessionController;
+use App\Http\Controllers\Api\V1\ProfileTwoFactorController;
 use App\Http\Controllers\Api\V1\ProfitIntelligenceController;
 use App\Http\Controllers\Api\V1\RecoveryOpportunityController;
 use App\Http\Controllers\Api\V1\RoleController;
@@ -84,13 +113,18 @@ use App\Http\Controllers\Api\V1\Storefront\PublicStorefrontController;
 use App\Http\Controllers\Api\V1\Storefront\ShippingZoneController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCheckoutController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontSettingsController;
+use App\Http\Controllers\Api\V1\Tenant\Ai\TenantAiCredentialController;
+use App\Http\Controllers\Api\V1\Tenant\Ai\TenantAiSettingsController;
+use App\Http\Controllers\Api\V1\Tenant\Ai\TenantAiUsageController;
 use App\Http\Controllers\Api\V1\TenantSettingsController;
 use App\Http\Controllers\Api\V1\Translation\TranslationController;
+use App\Http\Controllers\Api\V1\TwoFactorChallengeController;
 use App\Http\Controllers\Api\V1\UnsubscribeController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\VoiceMessageController;
 use App\Http\Controllers\Api\V1\Webhook\PaymentWebhookController;
 use App\Http\Controllers\Api\V1\WhatsappAccountController;
+use App\Http\Controllers\Api\Webhook\ChannelWebhookController;
 use App\Http\Controllers\Api\Webhook\EmailWebhookController;
 use App\Http\Controllers\Api\Webhook\WhatsappWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -151,6 +185,20 @@ Route::middleware(['web', 'auth:sanctum'])->group(function (): void {
     Route::post('auth/logout', [AuthController::class, 'logout'])->name('api.logout');
 });
 
+/*
+ * The second step of a two-factor login.
+ *
+ * It keeps the `web` middleware of the Fortify flow so the browser client sends
+ * the same CSRF header and cookie as it does for `/auth/login`. The route is
+ * throttled by challenge token and IP; the challenge itself is also single-use
+ * and attempt-limited in the service, so rate limiting is one layer, not the
+ * only one.
+ */
+Route::middleware(['web', 'throttle:two-factor-challenge'])->group(function (): void {
+    Route::post('auth/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])
+        ->name('api.two-factor-challenge');
+});
+
 // Provider callbacks. Meta cannot present a Sanctum token, so these routes stay
 // outside the authenticated group. The handler resolves the tenant from the
 // connected account rather than trusting the payload.
@@ -164,6 +212,22 @@ Route::prefix('webhooks')->group(function (): void {
     // closed when no secret is configured.
     Route::post('email', EmailWebhookController::class)
         ->name('webhooks.email');
+
+    /*
+     * The generic channel webhook. One endpoint serves every connector in the
+     * registry; the connector verifies its own signature and translates its own
+     * payload. The tenant is derived from the verified connection, never from
+     * the payload, and the optional connection id in the path makes the URL
+     * stable for providers that cannot send a tenant hint (Telegram, email,
+     * SMS). Meta-backed channels may omit it and resolve by account id.
+     */
+    Route::get('channels/{channel}/{connection?}', [ChannelWebhookController::class, 'verify'])
+        ->whereNumber('connection')
+        ->name('webhooks.channels.verify');
+    Route::post('channels/{channel}/{connection?}', [ChannelWebhookController::class, 'events'])
+        ->whereNumber('connection')
+        ->middleware('throttle:channel-webhook')
+        ->name('webhooks.channels.events');
 
     /*
      * Payment provider callbacks. The provider cannot present Sanctum or a
@@ -216,6 +280,21 @@ Route::prefix('public')->name('api.public.')->group(function (): void {
     Route::post('newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe'])->middleware('throttle:newsletter')->name('newsletter.unsubscribe');
 
     /*
+     * The public Help Center: Dukavo's own product documentation, anonymous
+     * edition. Visibility is computed server-side from the viewer — a guest
+     * here, so only `public` articles are ever reachable — never from the
+     * query string. The signed-in edition lives in the `help` group below and
+     * serves the same slugs.
+     */
+    Route::get('help/categories', [MarketingHelpCenterController::class, 'categories'])->name('help.categories.index');
+    Route::get('help/articles', [MarketingHelpCenterController::class, 'articles'])->name('help.articles.index');
+    Route::get('help/search', [MarketingHelpCenterController::class, 'search'])
+        ->middleware('throttle:help-search')->name('help.search');
+    Route::get('help/articles/{slug}', [MarketingHelpCenterController::class, 'article'])->name('help.articles.show');
+    Route::post('help/articles/{slug}/feedback', [MarketingHelpCenterController::class, 'feedback'])
+        ->middleware('throttle:help-feedback')->name('help.articles.feedback');
+
+    /*
      * Merchant storefronts are public by design, but their data is still
      * tenant-owned. The tenant comes from the URL slug, never a header or
      * payload, and each controller enters TenantContext::run() before touching
@@ -258,6 +337,25 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
     Route::get('currencies', [CurrencyController::class, 'index'])->name('api.currencies.index');
 
     /*
+     * The Help Center, signed-in edition. Authenticated and active but
+     * deliberately *outside* the `tenant` group: help articles document
+     * Dukavo itself, not one workspace, so every reader sees the same
+     * catalogue regardless of the selected tenant. Visibility is computed
+     * server-side from the viewer — a merchant member sees merchant-only
+     * guides, a platform operator sees everything — and a restricted article
+     * answers 404, never 403.
+     */
+    Route::prefix('help')->name('api.help.')->group(function (): void {
+        Route::get('categories', [AuthenticatedHelpCenterController::class, 'categories'])->name('categories.index');
+        Route::get('articles', [AuthenticatedHelpCenterController::class, 'articles'])->name('articles.index');
+        Route::get('search', [AuthenticatedHelpCenterController::class, 'search'])
+            ->middleware('throttle:help-search')->name('search');
+        Route::get('articles/{slug}', [AuthenticatedHelpCenterController::class, 'article'])->name('articles.show');
+        Route::post('articles/{slug}/feedback', [AuthenticatedHelpCenterController::class, 'feedback'])
+            ->middleware('throttle:help-feedback')->name('articles.feedback');
+    });
+
+    /*
      * Profile: the signed-in user's own account. Authenticated and active, but
      * deliberately *outside* the `tenant` group — the account belongs to the
      * person, not to whichever workspace happens to be selected, and the same
@@ -268,9 +366,27 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
     Route::prefix('profile')->name('api.profile.')->group(function (): void {
         Route::get('/', [ProfileController::class, 'show'])->name('show');
         Route::patch('/', [ProfileController::class, 'update'])->name('update');
+        Route::get('overview', [ProfileController::class, 'overview'])->name('overview');
         Route::post('avatar', [ProfileController::class, 'storeAvatar'])->name('avatar.store');
         Route::delete('avatar', [ProfileController::class, 'destroyAvatar'])->name('avatar.destroy');
         Route::put('password', [ProfileController::class, 'updatePassword'])->name('password.update');
+
+        /*
+         * First-login preferences. `skip` is a first-class outcome: the flow is
+         * never a gate, and either completion path stamps the same one-shot
+         * marker so the prompt cannot return.
+         */
+        Route::get('onboarding', [ProfileOnboardingController::class, 'show'])->name('onboarding.show');
+        Route::post('onboarding', [ProfileOnboardingController::class, 'store'])->name('onboarding.store');
+        Route::post('onboarding/skip', [ProfileOnboardingController::class, 'skip'])->name('onboarding.skip');
+
+        /*
+         * Country, city and timezone data for the personal selectors. Not
+         * tenant-scoped: a person's location is theirs, not a store's.
+         */
+        Route::get('locations/countries', [LocationController::class, 'countries'])->name('locations.countries');
+        Route::get('locations/countries/{country}/cities', [LocationController::class, 'cities'])->name('locations.cities');
+        Route::get('locations/timezones', [LocationController::class, 'timezones'])->name('locations.timezones');
 
         /*
          * Signed-in devices. `sessions/{token}` must stay below the bare
@@ -280,6 +396,23 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('sessions', [ProfileSessionController::class, 'index'])->name('sessions.index');
         Route::delete('sessions', [ProfileSessionController::class, 'destroyOthers'])->name('sessions.destroy-others');
         Route::delete('sessions/{token}', [ProfileSessionController::class, 'destroy'])->name('sessions.destroy');
+
+        /*
+         * The account's own security history. Append-only; no route edits or
+         * deletes an event.
+         */
+        Route::get('security/activity', [ProfileSecurityController::class, 'activity'])->name('security.activity');
+
+        /*
+         * TOTP enrolment and recovery codes. The secret appears only in the
+         * setup response and the codes only in the confirm/regenerate
+         * responses; neither is ever readable afterwards.
+         */
+        Route::get('two-factor', [ProfileTwoFactorController::class, 'show'])->name('two-factor.show');
+        Route::post('two-factor/setup', [ProfileTwoFactorController::class, 'setup'])->name('two-factor.setup');
+        Route::post('two-factor/confirm', [ProfileTwoFactorController::class, 'confirm'])->name('two-factor.confirm');
+        Route::post('two-factor/recovery-codes', [ProfileTwoFactorController::class, 'regenerate'])->name('two-factor.recovery-codes');
+        Route::delete('two-factor', [ProfileTwoFactorController::class, 'destroy'])->name('two-factor.destroy');
 
         Route::middleware('tenant.optional')->group(function (): void {
             Route::get('notifications/channels', [NotificationPreferenceController::class, 'channels'])->name('notifications.channels');
@@ -342,6 +475,45 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('dashboard', [PlatformDashboardController::class, 'index'])->name('dashboard');
 
         /*
+         * Platform configuration. The registry is the allow-list: a key that is
+         * not defined there cannot be read or written through these routes.
+         * Reading the section catalogue and the last health result is a view
+         * permission; changing a value is section-specific, and replacing a
+         * secret additionally needs `platform_settings.secrets`. Static routes
+         * are declared before `{category}` so they cannot be captured as a
+         * category name.
+         */
+        Route::prefix('settings')->name('settings.')->group(function (): void {
+            Route::get('/', [PlatformSettingController::class, 'index'])
+                ->middleware('permission:platform_settings.view,platform_security.view')
+                ->name('index');
+            Route::get('system', [PlatformSystemController::class, 'index'])
+                ->middleware('permission:platform_settings.view,platform_security.view')
+                ->name('system');
+            Route::get('history', [PlatformSettingHistoryController::class, 'index'])
+                ->middleware('permission:platform_settings.view')
+                ->name('history');
+            Route::get('health', [PlatformIntegrationHealthController::class, 'index'])
+                ->middleware('permission:platform_settings.view,integrations_admin.view')
+                ->name('health.index');
+            Route::post('health/{integration}', [PlatformIntegrationHealthController::class, 'check'])
+                ->middleware('permission:platform_settings.test,integrations_admin.manage')
+                ->name('health.check');
+            Route::get('features', [PlatformFeatureFlagController::class, 'index'])
+                ->middleware('permission:platform_features.view,platform_settings.view')
+                ->name('features.index');
+            Route::put('features/{flag}', [PlatformFeatureFlagController::class, 'update'])
+                ->middleware('permission:platform_features.manage')
+                ->name('features.update');
+            Route::get('{category}', [PlatformSettingController::class, 'show'])
+                ->middleware('permission:platform_settings.view,platform_security.view')
+                ->name('show');
+            Route::put('{category}', [PlatformSettingController::class, 'update'])
+                ->middleware('permission:platform_settings.update,platform_security.manage,platform_features.manage')
+                ->name('update');
+        });
+
+        /*
          * AI assistance for Dukavo staff. Platform-level because both endpoints
          * work on Dukavo's own data (the cross-tenant overview and the marketing
          * newsletters), never a merchant workspace. `permission:ai.use` is held by
@@ -369,6 +541,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
                 ->middleware('permission:translations.view')->name('show');
             Route::post('{entity}/{id}/generate', [TranslationController::class, 'generate'])
                 ->middleware('permission:translations.generate')->name('generate');
+            Route::put('{entity}/{id}', [TranslationController::class, 'save'])
+                ->middleware('permission:translations.review')->name('save');
             Route::post('{entity}/{id}/approve-all', [TranslationController::class, 'approveAll'])
                 ->middleware('permission:translations.review')->name('approve-all');
             Route::patch('{translation}', [TranslationController::class, 'update'])
@@ -520,6 +694,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
                 ->middleware('permission:automation.manage')->name('publish');
             Route::post('{automationTemplate}/archive', [PlatformAutomationTemplateController::class, 'archive'])
                 ->middleware('permission:automation.manage')->name('archive');
+            Route::post('{automationTemplate}/restore', [PlatformAutomationTemplateController::class, 'restore'])
+                ->middleware('permission:automation.manage')->name('restore');
             Route::get('{automationTemplate}/versions', [PlatformAutomationTemplateController::class, 'versions'])
                 ->middleware('permission:automation.view')->name('versions');
         });
@@ -581,6 +757,52 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::delete('newsletters/{newsletter}', [PlatformNewsletterController::class, 'destroy'])->name('newsletters.destroy');
 
         /*
+         * Help Center administration: Dukavo's own product documentation.
+         * Platform-level by design (these tables carry no tenant_id), so — like
+         * the FAQ and newsletter groups above — no `permission:` middleware is
+         * layered on top of `platform`. Fixed action routes (`slug-availability`,
+         * `content-images`, `reorder`, the editorial transitions) precede their
+         * bound `{param}` siblings so a keyword is never parsed as an id.
+         */
+        Route::prefix('help')->name('help.')->group(function (): void {
+            Route::get('categories', [PlatformHelpCategoryController::class, 'index'])->name('categories.index');
+            Route::post('categories', [PlatformHelpCategoryController::class, 'store'])->name('categories.store');
+            Route::get('categories/slug-availability', [PlatformHelpCategoryController::class, 'slugAvailability'])->name('categories.slug-availability');
+            Route::post('categories/reorder', [PlatformHelpCategoryController::class, 'reorder'])->name('categories.reorder');
+            Route::get('categories/{helpCategory}', [PlatformHelpCategoryController::class, 'show'])->name('categories.show');
+            Route::patch('categories/{helpCategory}', [PlatformHelpCategoryController::class, 'update'])->name('categories.update');
+            Route::delete('categories/{helpCategory}', [PlatformHelpCategoryController::class, 'destroy'])->name('categories.destroy');
+
+            Route::get('articles', [PlatformHelpArticleController::class, 'index'])->name('articles.index');
+            Route::post('articles', [PlatformHelpArticleController::class, 'store'])->name('articles.store');
+            Route::post('articles/content-images', [HelpContentImageController::class, 'store'])->name('articles.content-images.store');
+            Route::get('articles/slug-availability', [PlatformHelpArticleController::class, 'slugAvailability'])->name('articles.slug-availability');
+            // Editorial state changes are explicit actions so the audit trail
+            // records the decision, not just a field edit.
+            Route::post('articles/{helpArticle}/publish', [PlatformHelpArticleController::class, 'publish'])->name('articles.publish');
+            Route::post('articles/{helpArticle}/unpublish', [PlatformHelpArticleController::class, 'unpublish'])->name('articles.unpublish');
+            Route::post('articles/{helpArticle}/archive', [PlatformHelpArticleController::class, 'archive'])->name('articles.archive');
+            Route::post('articles/{helpArticle}/restore', [PlatformHelpArticleController::class, 'restore'])->name('articles.restore');
+            Route::get('articles/{helpArticle}', [PlatformHelpArticleController::class, 'show'])->name('articles.show');
+            Route::patch('articles/{helpArticle}', [PlatformHelpArticleController::class, 'update'])->name('articles.update');
+            Route::delete('articles/{helpArticle}', [PlatformHelpArticleController::class, 'destroy'])->name('articles.destroy');
+
+            Route::get('tags', [HelpTagController::class, 'index'])->name('tags.index');
+            Route::post('tags', [HelpTagController::class, 'store'])->name('tags.store');
+            Route::get('tags/{helpTag}', [HelpTagController::class, 'show'])->name('tags.show');
+            Route::patch('tags/{helpTag}', [HelpTagController::class, 'update'])->name('tags.update');
+            Route::delete('tags/{helpTag}', [HelpTagController::class, 'destroy'])->name('tags.destroy');
+
+            Route::get('feedback', [HelpFeedbackController::class, 'index'])->name('feedback.index');
+            Route::get('feedback/comments', [HelpFeedbackController::class, 'comments'])->name('feedback.comments');
+            Route::delete('feedback/{feedback}', [HelpFeedbackController::class, 'destroy'])->name('feedback.destroy');
+
+            Route::get('analytics/overview', [HelpAnalyticsController::class, 'overview'])->name('analytics.overview');
+            Route::get('analytics/searches', [HelpAnalyticsController::class, 'searches'])->name('analytics.searches');
+            Route::get('analytics/helpfulness', [HelpAnalyticsController::class, 'helpfulness'])->name('analytics.helpfulness');
+        });
+
+        /*
          * Payment catalogue administration. Platform operators decide which
          * markets and providers are offered, and can inspect signed webhook
          * evidence. There is deliberately no route that reads a merchant
@@ -626,6 +848,93 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
                 ->middleware('permission:platform_payments.view')->name('webhook-events.index');
             Route::get('webhook-events/{event}', [PaymentWebhookEventController::class, 'show'])
                 ->middleware('permission:platform_payments.view')->name('webhook-events.show');
+        });
+
+        /*
+         * AI infrastructure administration. The platform owner's half of the
+         * AI surface: providers, credentials, models, task routing, prompts,
+         * usage and the attempt-level activity log. Strictly separate from the
+         * staff AI assistance above (`ai/availability` &c., which is `ai.use`)
+         * and from the merchant's own AI settings (the tenant group below).
+         *
+         * Reads need `ai_admin.view`; configuration `ai_admin.manage`; the
+         * credential surface is the most sensitive and needs `ai_admin.rotate`
+         * on top. No route here ever returns a key: credentials are write-only
+         * and every read is masked.
+         */
+        Route::prefix('ai/admin')->name('ai-admin.')->group(function (): void {
+            Route::get('overview', [AiAdminOverviewController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('overview');
+            Route::get('settings', [AiAdminSettingsController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('settings');
+            Route::get('usage', [AiUsageController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('usage');
+
+            Route::get('activity-logs', [AiActivityLogController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('activity-logs.index');
+            Route::get('activity-logs/categories', [AiActivityLogController::class, 'categories'])
+                ->middleware('permission:ai_admin.view')->name('activity-logs.categories');
+
+            Route::get('providers', [AiProviderController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('providers.index');
+            // Registered before the bound `{provider}` so it is never parsed as an id.
+            Route::get('providers/catalog', [AiProviderController::class, 'catalog'])
+                ->middleware('permission:ai_admin.view')->name('providers.catalog');
+            Route::get('providers/{provider}', [AiProviderController::class, 'show'])
+                ->middleware('permission:ai_admin.view')->name('providers.show');
+            Route::get('providers/{provider}/credentials', [AiProviderCredentialController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('providers.credentials.index');
+            Route::get('providers/{provider}/models', [AiModelController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('providers.models.index');
+
+            Route::get('tasks', [AiTaskController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('tasks.index');
+            Route::get('tasks/{task}', [AiTaskController::class, 'show'])
+                ->middleware('permission:ai_admin.view')->name('tasks.show');
+
+            Route::get('prompts', [AiPromptTemplateController::class, 'index'])
+                ->middleware('permission:ai_admin.view')->name('prompts.index');
+            Route::get('prompts/{template}', [AiPromptTemplateController::class, 'show'])
+                ->middleware('permission:ai_admin.view')->name('prompts.show');
+
+            Route::middleware('permission:ai_admin.manage')->group(function (): void {
+                Route::post('providers', [AiProviderController::class, 'store'])->name('providers.store');
+                Route::patch('providers/{provider}', [AiProviderController::class, 'update'])->name('providers.update');
+
+                Route::post('providers/{provider}/models', [AiModelController::class, 'store'])->name('providers.models.store');
+                Route::patch('models/{model}', [AiModelController::class, 'update'])->name('models.update');
+                Route::delete('models/{model}', [AiModelController::class, 'destroy'])->name('models.destroy');
+
+                Route::post('tasks/seed', [AiTaskController::class, 'seed'])->name('tasks.seed');
+                Route::patch('tasks/{task}', [AiTaskController::class, 'update'])->name('tasks.update');
+                // The chain replaces the whole chain, so a task is never mid-edit.
+                Route::put('tasks/{task}/routes', [AiTaskController::class, 'syncRoutes'])->name('tasks.routes');
+
+                Route::post('prompts', [AiPromptTemplateController::class, 'store'])->name('prompts.store');
+                Route::post('prompts/{template}/versions', [AiPromptTemplateController::class, 'storeVersion'])->name('prompts.versions.store');
+                Route::post('prompts/{template}/versions/{version}/activate', [AiPromptTemplateController::class, 'activateVersion'])->name('prompts.versions.activate');
+            });
+
+            Route::middleware('permission:ai_admin.rotate')->group(function (): void {
+                Route::post('providers/{provider}/credentials', [AiProviderCredentialController::class, 'store'])->name('providers.credentials.store');
+                Route::delete('providers/{provider}/credentials/{credential}', [AiProviderCredentialController::class, 'revoke'])->name('providers.credentials.revoke');
+                Route::post('providers/{provider}/test-connection', [AiProviderCredentialController::class, 'test'])->name('providers.test-connection');
+            });
+        });
+
+        /*
+         * Omnichannel integration health. Read-only apart from an explicit
+         * re-check, which calls the provider and is therefore a manage action.
+         * Credentials stay encrypted on the tenant connection; this surface
+         * reports availability, status and failure text only.
+         */
+        Route::prefix('integrations')->name('integrations.')->group(function (): void {
+            Route::get('/', [PlatformIntegrationController::class, 'index'])
+                ->middleware('permission:integrations_admin.view')->name('index');
+            Route::get('{channel}', [PlatformIntegrationController::class, 'show'])
+                ->middleware('permission:integrations_admin.view')->name('show');
+            Route::post('{channel}/recheck', [PlatformIntegrationController::class, 'recheck'])
+                ->middleware('permission:integrations_admin.manage')->name('recheck');
         });
     });
 
@@ -721,6 +1030,32 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('settings', [TenantSettingsController::class, 'show'])->middleware('permission:settings.view')->name('settings.show');
         Route::patch('settings', [TenantSettingsController::class, 'update'])->middleware('permission:settings.manage')->name('settings.update');
 
+        /*
+         * The workspace's AI settings: which AI features run here, its own
+         * consumption, and — only while the platform has enabled BYOK — the
+         * merchant's own provider credentials. Strictly the merchant half of
+         * the AI surface: no provider administration, no routing, no prompts,
+         * and the platform's credentials are never visible from here.
+         */
+        Route::prefix('ai-settings')->name('ai-settings.')->group(function (): void {
+            Route::get('/', [TenantAiSettingsController::class, 'index'])
+                ->middleware('permission:ai_settings.view')->name('index');
+            Route::patch('/', [TenantAiSettingsController::class, 'update'])
+                ->middleware('permission:ai_settings.manage')->name('update');
+
+            Route::get('usage', [TenantAiUsageController::class, 'index'])
+                ->middleware('permission:ai_settings.view')->name('usage');
+
+            Route::get('credentials', [TenantAiCredentialController::class, 'index'])
+                ->middleware('permission:ai_settings.view')->name('credentials.index');
+            Route::post('credentials', [TenantAiCredentialController::class, 'store'])
+                ->middleware('permission:ai_settings.manage')->name('credentials.store');
+            Route::post('credentials/test', [TenantAiCredentialController::class, 'test'])
+                ->middleware('permission:ai_settings.manage')->name('credentials.test');
+            Route::delete('credentials/{credential}', [TenantAiCredentialController::class, 'revoke'])
+                ->middleware('permission:ai_settings.manage')->name('credentials.revoke');
+        });
+
         // Catalogue
         // Categories are addressed by their internal id: unlike products they
         // have no public URL of their own, so an id is the honest identifier.
@@ -789,6 +1124,19 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::patch('customers/{customer}', [CustomerController::class, 'update'])->middleware('permission:customers.update')->name('customers.update');
         Route::delete('customers/{customer}', [CustomerController::class, 'destroy'])->middleware('permission:customers.delete')->name('customers.destroy');
 
+        /*
+         * Provider identities. Reading is part of reading the customer;
+         * linking and unlinking are explicit edits. The resolver never merges
+         * on a name or username, so this is the only way two channels become
+         * one customer.
+         */
+        Route::get('customers/{customer}/identities', [CustomerIdentityController::class, 'index'])
+            ->middleware('permission:customers.view')->name('customers.identities.index');
+        Route::post('customers/{customer}/identities', [CustomerIdentityController::class, 'store'])
+            ->middleware('permission:customers.update')->name('customers.identities.store');
+        Route::delete('customers/{customer}/identities/{identity}', [CustomerIdentityController::class, 'destroy'])
+            ->middleware('permission:customers.update')->name('customers.identities.destroy');
+
         // Customer CRM / Memory
         Route::get('customers/{customer}/crm/overview', [CustomerCrmController::class, 'overview'])->middleware('permission:customers.view')->name('customers.crm.overview');
         Route::get('customers/{customer}/crm/timeline', [CustomerCrmController::class, 'timeline'])->middleware('permission:customers.view')->name('customers.crm.timeline');
@@ -826,6 +1174,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::get('conversations/{conversation}/events', [ConversationEventController::class, 'index'])->middleware('permission:conversations.view')->name('conversations.events');
         Route::get('conversations/{conversation}/messages', [ConversationController::class, 'messages'])->middleware('permission:conversations.view')->name('conversations.messages');
         Route::post('conversations/{conversation}/messages', [ConversationController::class, 'reply'])->middleware('permission:conversations.reply')->name('conversations.reply');
+        Route::get('conversations/{conversation}/voice-reply', [ConversationController::class, 'voiceReplyAvailability'])->middleware('permission:conversations.view')->name('conversations.voice-reply.availability');
+        Route::post('conversations/{conversation}/voice-reply', [ConversationController::class, 'voiceReply'])->middleware('permission:conversations.reply')->name('conversations.voice-reply');
         Route::post('conversations/{conversation}/notes', [ConversationController::class, 'note'])->middleware('permission:conversations.reply')->name('conversations.notes');
         Route::post('conversations/{conversation}/templates', [ConversationController::class, 'template'])->middleware('permission:conversations.reply')->name('conversations.templates');
         Route::post('conversations/{conversation}/messages/{message}/retry', [ConversationController::class, 'retry'])->middleware('permission:conversations.reply')->name('conversations.retry');
@@ -896,6 +1246,29 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
         Route::post('whatsapp-accounts/{whatsappAccount}/verify', [WhatsappAccountController::class, 'verify'])->middleware('permission:whatsapp.manage')->name('whatsapp.verify');
         Route::post('whatsapp-accounts/{whatsappAccount}/disconnect', [WhatsappAccountController::class, 'disconnect'])->middleware('permission:whatsapp.manage')->name('whatsapp.disconnect');
 
+        /*
+         * The merchant integration centre. WhatsApp remains manageable through
+         * its own settings above; the generic connections here add the other
+         * channels and expose one consistent health surface. Credentials are
+         * write-only and encrypted at rest.
+         */
+        Route::prefix('integrations')->name('integrations.')->group(function (): void {
+            Route::get('/', [IntegrationController::class, 'index'])
+                ->middleware('permission:integrations.view')->name('index');
+            Route::post('/', [IntegrationController::class, 'store'])
+                ->middleware('permission:integrations.manage')->name('store');
+            Route::get('{connection}', [IntegrationController::class, 'show'])
+                ->middleware('permission:integrations.view')->name('show');
+            Route::patch('{connection}', [IntegrationController::class, 'update'])
+                ->middleware('permission:integrations.manage')->name('update');
+            Route::delete('{connection}', [IntegrationController::class, 'destroy'])
+                ->middleware('permission:integrations.manage')->name('destroy');
+            Route::post('{connection}/test', [IntegrationController::class, 'test'])
+                ->middleware('permission:integrations.manage')->name('test');
+            Route::post('{connection}/reconnect', [IntegrationController::class, 'reconnect'])
+                ->middleware('permission:integrations.manage')->name('reconnect');
+        });
+
         // Reporting
         Route::get('dashboard', [DashboardController::class, 'index'])->middleware('permission:dashboard.view')->name('dashboard.index');
         Route::get('dashboard/summary', [DashboardController::class, 'summary'])->middleware('permission:dashboard.view')->name('dashboard.summary');
@@ -965,6 +1338,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function (): void {
                 ->middleware('permission:translations.view')->name('show');
             Route::post('{entity}/{id}/generate', [TranslationController::class, 'generate'])
                 ->middleware('permission:translations.generate')->name('generate');
+            Route::put('{entity}/{id}', [TranslationController::class, 'save'])
+                ->middleware('permission:translations.review')->name('save');
             Route::post('{entity}/{id}/approve-all', [TranslationController::class, 'approveAll'])
                 ->middleware('permission:translations.review')->name('approve-all');
             Route::patch('{translation}', [TranslationController::class, 'update'])

@@ -10,6 +10,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\Tenant;
+use App\Services\Configuration\FeatureFlagService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -26,8 +27,14 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
  */
 class StorefrontService
 {
+    public function __construct(private readonly FeatureFlagService $features) {}
+
     public function resolveTenant(string $tenantSlug): Tenant
     {
+        if ($this->features->disabled('public_storefront')) {
+            throw new ModelNotFoundException('This storefront is not available.');
+        }
+
         $tenant = Tenant::query()->where('slug', $tenantSlug)->first();
 
         if (! $tenant instanceof Tenant || $tenant->status !== TenantStatus::Active) {
@@ -75,7 +82,7 @@ class StorefrontService
     }
 
     /**
-     * @param  array{search?: string|null, category?: string|null, sort?: string|null, per_page?: int|null}  $filters
+     * @param  array{search?: string|null, category?: string|null, sort?: string|null, per_page?: int|null, locale?: string|null}  $filters
      */
     public function products(Store $store, array $filters = []): LengthAwarePaginator
     {
@@ -83,6 +90,7 @@ class StorefrontService
             ->active()
             ->where(fn ($inner) => $this->availableProductQuery($inner, $store))
             ->with([
+                'store',
                 'category',
                 'images',
                 'variants.inventories' => fn ($inventory) => $inventory->where('store_id', $store->getKey()),
@@ -90,7 +98,7 @@ class StorefrontService
             ]);
 
         if (($filters['search'] ?? null) !== null && $filters['search'] !== '') {
-            $query->search((string) $filters['search']);
+            $query->search((string) $filters['search'], $filters['locale'] ?? null);
         }
 
         if (($filters['category'] ?? null) !== null && $filters['category'] !== '') {
@@ -107,13 +115,26 @@ class StorefrontService
         return $query->paginate(min((int) ($filters['per_page'] ?? 24), 60))->withQueryString();
     }
 
-    public function product(Store $store, string $slug): Product
+    /**
+     * Resolve a product by its canonical or any approved localized slug.
+     *
+     * The localized slug is stored on the product only after review, so the
+     * lookup can never expose a draft translation. The canonical slug remains
+     * valid in every language, which is what makes changing a localized URL a
+     * safe, reversible action.
+     */
+    public function product(Store $store, string $slug, ?string $locale = null): Product
     {
+        $locale = $locale === null ? null : strtolower(trim($locale));
+
         return Product::query()
             ->active()
-            ->where('slug', $slug)
+            ->where(fn ($lookup) => $lookup
+                ->where('slug', $slug)
+                ->when($locale !== null && $locale !== '', fn ($inner) => $inner->orWhere('localized_slugs->'.$locale, $slug)))
             ->where(fn ($inner) => $this->availableProductQuery($inner, $store))
             ->with([
+                'store',
                 'category',
                 'images',
                 'variants.inventories' => fn ($inventory) => $inventory->where('store_id', $store->getKey()),

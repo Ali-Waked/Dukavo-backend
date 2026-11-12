@@ -121,6 +121,13 @@ final class AutomationTemplateController extends Controller
         );
     }
 
+    public function restore(Request $request, AutomationTemplate $automationTemplate): AutomationTemplateResource
+    {
+        return new AutomationTemplateResource(
+            $this->templates->restore($automationTemplate, $request->user())->load('updater'),
+        );
+    }
+
     public function versions(AutomationTemplate $automationTemplate): AnonymousResourceCollection
     {
         return AutomationTemplateVersionResource::collection(

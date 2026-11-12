@@ -18,6 +18,7 @@ use App\Models\NotificationEventKey;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * The single entry point for raising a notification.
@@ -109,6 +110,10 @@ final class NotificationDispatcher
             );
 
             $notification = Notification::query()->create([
+                // Assigned explicitly rather than only in the model's creating
+                // hook: callers such as the demo seeders run with model events
+                // muted, and a notification still needs its identifier there.
+                'id' => (string) Str::uuid(),
                 'notifiable_type' => $user->getMorphClass(),
                 'notifiable_id' => $user->getKey(),
                 'tenant_id' => $intent->tenantId,

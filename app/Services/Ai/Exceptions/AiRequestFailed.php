@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Ai\Exceptions;
 
+use App\Enums\AiErrorCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -50,9 +51,44 @@ class AiRequestFailed extends RuntimeException
         );
     }
 
+    /**
+     * The provider refused the content on safety grounds.
+     *
+     * Distinct from a rejection so the engine can refuse to fail over: the
+     * refusal is a provider's safety decision, not an outage, and asking a
+     * second vendor for the same content would be bypassing it.
+     */
+    public static function contentPolicy(int $status, ?string $providerCode = null): self
+    {
+        return new self(
+            'The AI provider declined to process this content.',
+            'ai_content_policy',
+            ['provider_status' => $status, 'provider_code' => $providerCode],
+        );
+    }
+
     public function errorCode(): string
     {
         return $this->errorCode;
+    }
+
+    /**
+     * The normalized failure category for this exception.
+     *
+     * Content-policy refusals are reported as such so the engine refuses to
+     * route the same content to a second provider.
+     */
+    public function errorCategory(): AiErrorCategory
+    {
+        return match ($this->errorCode) {
+            'ai_content_policy' => AiErrorCategory::ContentPolicy,
+            'ai_invalid_response' => AiErrorCategory::InvalidOutput,
+            'ai_request_rejected' => isset($this->context['provider_code'])
+                && in_array(strtolower((string) $this->context['provider_code']), ['content_policy_violation', 'content_filter', 'moderation_blocked', 'safety_violation'], true)
+                ? AiErrorCategory::ContentPolicy
+                : AiErrorCategory::Validation,
+            default => AiErrorCategory::Unknown,
+        };
     }
 
     /**

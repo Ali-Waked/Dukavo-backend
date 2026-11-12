@@ -4,16 +4,17 @@ declare(strict_types=1);
 
 namespace App\Services\Ai\Features;
 
+use App\Enums\AiErrorCategory;
+use App\Enums\AiTask;
+use App\Services\Ai\AiExecutionEngine;
 use App\Services\Ai\AiGuard;
 use App\Services\Ai\AiUsageRecorder;
-use App\Services\Ai\Contracts\AiProvider;
 use App\Services\Ai\Data\AiCompletion;
 use App\Services\Ai\Data\AiMessage;
 use App\Services\Ai\Exceptions\AiRequestFailed;
-use App\Services\Ai\Exceptions\AiUnavailable;
-use App\Services\Ai\Providers\ProviderRegistry;
 use App\Services\Ai\Support\AiCapability;
 use App\Services\Ai\Support\PromptGuard;
+use App\Services\Ai\Support\PromptRenderer;
 use App\Services\Ai\Validation\JsonSchemaValidator;
 
 /**
@@ -26,15 +27,21 @@ use App\Services\Ai\Validation\JsonSchemaValidator;
  * accounting. Because every feature funnels through {@see self::run()}, a new
  * feature cannot accidentally bypass the guard, trust an unvalidated answer or
  * forget to record its cost.
+ *
+ * Provider selection, retries, failover and health tracking belong to
+ * {@see AiExecutionEngine}; this class owns the parts that are about the
+ * *request* rather than the provider: guards, the prompt pair and the schema
+ * contract, including the one bounded repair a wrong answer gets.
  */
 abstract class Feature
 {
     public function __construct(
-        protected readonly ProviderRegistry $providers,
+        protected readonly AiExecutionEngine $engine,
         protected readonly AiGuard $guard,
         protected readonly AiUsageRecorder $usage,
         protected readonly PromptGuard $prompts,
         protected readonly JsonSchemaValidator $validator,
+        protected readonly PromptRenderer $renderer,
     ) {}
 
     /**
@@ -48,9 +55,11 @@ abstract class Feature
     /**
      * Run one guarded completion and record its usage.
      *
-     * Provider failures are logged against the feature and re-thrown so the
-     * exception handler can turn them into a clear, recoverable response; a
-     * successful call is recorded before it is returned.
+     * The engine selects the provider, retries transient failures and fails
+     * over when policy allows; its failures are normalized and re-thrown here
+     * so the exception handler can turn them into a clear, recoverable
+     * response. A successful call is accounted for by the engine, which knows
+     * which provider actually served it and how many fallbacks it took.
      *
      * When a schema was requested the answer is validated here, on the server.
      * A provider that enforces the schema is a convenience; this check is the
@@ -73,16 +82,16 @@ abstract class Feature
         $config = $this->guard->feature($feature);
         $this->guard->enforceDailyLimits($feature, $config, $tenantId, $userId);
 
-        $required = [AiCapability::TextCompletion, ...$capabilities];
+        $task = AiTask::forFeatureKey($feature);
 
-        if ($schema !== null) {
-            $required[] = AiCapability::StructuredOutput;
-        }
-
-        $provider = $this->providers->for(...$required);
+        // A stored template overrides the built-in instruction when one
+        // exists; with none, the feature's own prompt serves exactly as
+        // before. The user prompt is never templated: it carries business
+        // data the feature assembles through the guard.
+        $rendered = $this->renderer->render($task, $this->useCaseKey(), variables: ['feature' => $feature]);
 
         $messages = [
-            AiMessage::system($systemPrompt),
+            AiMessage::system($rendered['system_prompt'] ?? $systemPrompt),
             AiMessage::user($userPrompt),
         ];
 
@@ -95,15 +104,27 @@ abstract class Feature
         $repairs = $schema === null ? 0 : min(1, max(0, (int) ($config['repair_attempts'] ?? 0)));
 
         for ($attempt = 0; $attempt <= $repairs; $attempt++) {
-            $completion = $this->call($provider, $messages, $options, $schema, $schemaName, $feature, $tenantId, $userId);
+            $result = $this->engine->run(
+                task: $task,
+                feature: $feature,
+                messages: $messages,
+                schema: $schema,
+                schemaName: (string) $schemaName,
+                options: $options,
+                tenantId: $tenantId,
+                userId: $userId,
+                capabilities: $capabilities,
+            );
+
+            $completion = $result['completion'];
 
             if ($schema === null) {
                 return $completion;
             }
 
-            $result = $this->validator->validate($completion->structured, $schema);
+            $validation = $this->validator->validate($completion->structured, $schema);
 
-            if ($result->isValid()) {
+            if ($validation->isValid()) {
                 return $completion;
             }
 
@@ -113,64 +134,27 @@ abstract class Feature
                     tenantId: $tenantId,
                     userId: $userId,
                     reason: 'ai_schema_invalid',
-                    metadata: ['errors' => $result->errors()],
-                    provider: $provider->provider(),
+                    metadata: ['errors' => $validation->errors()],
+                    provider: $result['provider'],
+                    task: $task,
+                    correlationId: $result['correlation_id'],
+                    errorCategory: AiErrorCategory::InvalidOutput,
+                    fallbackAttempts: $result['fallback_attempts'],
                 );
 
-                throw AiRequestFailed::invalidOutput($result->summary());
+                throw AiRequestFailed::invalidOutput($validation->summary());
             }
 
             $messages = [
                 ...$messages,
                 AiMessage::assistant($this->prompts->truncate((string) json_encode($completion->structured), 2000)),
-                AiMessage::user($this->repairInstruction($result->summary())),
+                AiMessage::user($this->repairInstruction($validation->summary())),
             ];
         }
 
         // The loop always returns or throws; this is unreachable but keeps the
         // contract explicit rather than implied.
         throw AiRequestFailed::invalidOutput('the answer could not be validated');
-    }
-
-    /**
-     * One provider call, accounted for whether it succeeds or not.
-     *
-     * @param  list<AiMessage>  $messages
-     * @param  array<string, mixed>  $options
-     * @param  array<string, mixed>|null  $schema
-     */
-    private function call(
-        AiProvider $provider,
-        array $messages,
-        array $options,
-        ?array $schema,
-        ?string $schemaName,
-        string $feature,
-        ?int $tenantId,
-        ?int $userId,
-    ): AiCompletion {
-        try {
-            $completion = $schema === null
-                ? $provider->complete($messages, $options)
-                : $provider->structured($messages, $schema, (string) $schemaName, $options);
-        } catch (AiUnavailable|AiRequestFailed $exception) {
-            $this->usage->recordFailure(
-                feature: $feature,
-                tenantId: $tenantId,
-                userId: $userId,
-                reason: $exception->errorCode(),
-                metadata: $exception->context(),
-                provider: $provider->provider(),
-            );
-
-            throw $exception;
-        }
-
-        $completion = $completion->withProvider($provider->provider());
-
-        $this->usage->recordSuccess($feature, $completion, $tenantId, $userId, $provider->provider());
-
-        return $completion;
     }
 
     /**

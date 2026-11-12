@@ -19,6 +19,7 @@ class UpdateProductImageRequest extends ApiRequest
     {
         return [
             'alt_text' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'caption' => ['sometimes', 'nullable', 'string', 'max:255'],
             'is_primary' => ['sometimes', 'boolean'],
             'position' => ['sometimes', 'integer', 'min:0'],
         ];

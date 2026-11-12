@@ -13,6 +13,7 @@ use App\Models\ProductVariant;
 use App\Models\Store;
 use App\Services\Currency\CurrencyCatalog;
 use App\Services\Inventory\InventoryService;
+use App\Services\Translation\TranslationService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
@@ -34,17 +35,18 @@ class ProductService
         private readonly TenantContext $tenants,
         private readonly InventoryService $inventory,
         private readonly CurrencyCatalog $currencies,
+        private readonly TranslationService $translations,
     ) {}
 
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public function create(array $attributes): Product
+    public function create(array $attributes, ?int $userId = null): Product
     {
         $tenant = $this->tenants->required();
 
         try {
-            return DB::transaction(function () use ($tenant, $attributes): Product {
+            return DB::transaction(function () use ($tenant, $attributes, $userId): Product {
                 $category = $this->resolveCategory($attributes['category_id'] ?? null);
                 // A null store means "available everywhere"; stock still has to
                 // live in a concrete store, so opening stock goes to the
@@ -71,6 +73,14 @@ class ProductService
                     'slug' => $slug,
                     'sku' => $attributes['sku'] ?? null,
                     'description' => $attributes['description'] ?? null,
+                    'short_description' => $attributes['short_description'] ?? null,
+                    'highlights' => $attributes['highlights'] ?? null,
+                    'features' => $attributes['features'] ?? null,
+                    'specifications' => $attributes['specifications'] ?? null,
+                    'tags' => $attributes['tags'] ?? null,
+                    'seo_title' => $attributes['seo_title'] ?? null,
+                    'seo_description' => $attributes['seo_description'] ?? null,
+                    'seo_keywords' => $attributes['seo_keywords'] ?? null,
                     'status' => $attributes['status'] ?? ProductStatus::Draft,
                     'price' => $attributes['price'] ?? 0,
                     'cost' => $attributes['cost'] ?? 0,
@@ -80,6 +90,7 @@ class ProductService
 
                 $variants = $this->syncVariants($product, $attributes['variants'] ?? []);
                 $this->initializeStock($store, $variants, $attributes['variants'] ?? []);
+                $this->saveProductTranslations($product, $attributes, $userId);
 
                 return $product->load(['variants', 'images', 'category']);
             });
@@ -96,10 +107,13 @@ class ProductService
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public function update(Product $product, array $attributes): Product
+    public function update(Product $product, array $attributes, ?int $userId = null): Product
     {
         try {
-            return DB::transaction(function () use ($product, $attributes): Product {
+            return DB::transaction(function () use ($product, $attributes, $userId): Product {
+                $translations = $attributes['translations'] ?? null;
+                unset($attributes['translations']);
+
                 if (array_key_exists('category_id', $attributes)) {
                     $attributes['category_id'] = $this->resolveCategory($attributes['category_id'])?->getKey();
                 }
@@ -130,6 +144,7 @@ class ProductService
                 }
 
                 $product->fill($attributes)->save();
+                $this->saveProductTranslations($product, ['translations' => $translations], $userId);
 
                 return $product->load(['variants', 'images', 'category']);
             });
@@ -138,6 +153,38 @@ class ProductService
                 'slug' => 'This slug is already in use. Please choose another one.',
             ]);
         }
+    }
+
+    /**
+     * Persist merchant-authored translations submitted with the form.
+     *
+     * The service, not the model, decides approval: a value typed by a person
+     * and explicitly saved is approved, while AI output must go through the
+     * separate review endpoints.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function saveProductTranslations(Product $product, array $attributes, ?int $userId): void
+    {
+        $translations = $attributes['translations'] ?? null;
+
+        if (! is_array($translations) || $translations === []) {
+            return;
+        }
+
+        $entity = $this->translations->registry()->get('product');
+
+        if ($entity === null) {
+            return;
+        }
+
+        $this->translations->saveManual(
+            $entity,
+            $product,
+            $translations,
+            (int) ($userId ?? 0),
+            $this->tenants->tenant(),
+        );
     }
 
     /**
@@ -209,6 +256,7 @@ class ProductService
 
             $payload = [
                 'name' => $variant['name'],
+                'description' => $variant['description'] ?? null,
                 'sku' => $variant['sku'] ?? null,
                 'barcode' => $variant['barcode'] ?? null,
                 'price' => $variant['price'],

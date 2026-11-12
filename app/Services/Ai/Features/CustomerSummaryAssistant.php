@@ -7,14 +7,15 @@ namespace App\Services\Ai\Features;
 use App\Models\ConversationMessage;
 use App\Models\Customer;
 use App\Models\User;
+use App\Services\Ai\AiExecutionEngine;
 use App\Services\Ai\AiGuard;
 use App\Services\Ai\AiUsageRecorder;
 use App\Services\Ai\Context\AiContext;
 use App\Services\Ai\Context\ContextBuilderFactory;
 use App\Services\Ai\Context\PersonalData;
 use App\Services\Ai\Data\AiCompletion;
-use App\Services\Ai\Providers\ProviderRegistry;
 use App\Services\Ai\Support\PromptGuard;
+use App\Services\Ai\Support\PromptRenderer;
 use App\Services\Ai\Validation\JsonSchemaValidator;
 
 /**
@@ -39,15 +40,16 @@ final class CustomerSummaryAssistant extends Feature
     private const MEMORY_LIMIT = 20;
 
     public function __construct(
-        ProviderRegistry $providers,
+        AiExecutionEngine $engine,
         AiGuard $guard,
         AiUsageRecorder $usage,
         PromptGuard $prompts,
         JsonSchemaValidator $validator,
+        PromptRenderer $renderer,
         private readonly ContextBuilderFactory $context,
         private readonly PersonalData $personal,
     ) {
-        parent::__construct($providers, $guard, $usage, $prompts, $validator);
+        parent::__construct($engine, $guard, $usage, $prompts, $validator, $renderer);
     }
 
     public function useCaseKey(): string

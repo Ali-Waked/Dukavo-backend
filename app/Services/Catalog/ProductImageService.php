@@ -32,11 +32,12 @@ class ProductImageService
      *
      * @param  array<int, UploadedFile>  $files
      * @param  array<int, string|null>  $altTexts  Optional alt text, keyed by the same index as $files
+     * @param  array<int, string|null>  $captions  Optional captions, keyed by the same index as $files
      * @return Collection<int, ProductImage>
      */
-    public function store(Product $product, array $files, array $altTexts = []): Collection
+    public function store(Product $product, array $files, array $altTexts = [], array $captions = []): Collection
     {
-        return DB::transaction(function () use ($product, $files, $altTexts): Collection {
+        return DB::transaction(function () use ($product, $files, $altTexts, $captions): Collection {
             $position = (int) $product->images()->max('position');
             $hasPrimary = $product->images()->where('is_primary', true)->exists();
             $created = new Collection;
@@ -50,6 +51,7 @@ class ProductImageService
                     'disk' => self::IMAGE_DISK,
                     'path' => $path,
                     'alt_text' => $altTexts[$index] ?? null,
+                    'caption' => $captions[$index] ?? null,
                     // The first image of an otherwise-empty gallery becomes the
                     // primary one; later uploads never steal that flag.
                     'is_primary' => ! $hasPrimary && $index === 0,

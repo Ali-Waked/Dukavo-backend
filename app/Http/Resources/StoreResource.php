@@ -51,6 +51,7 @@ class StoreResource extends JsonResource
             'currency_updated_at' => $this->currency_updated_at?->toIso8601String(),
             'timezone' => $this->timezone,
             'enabled_locales' => $this->enabled_locales ?? (array) config('dukavo.locales.enabled_default', ['en', 'ar']),
+            'default_locale' => $this->default_locale ?? (string) config('dukavo.locales.default', 'en'),
             'is_default' => $this->is_default,
             'storefront_enabled' => $this->storefront_enabled,
             'locale' => $locale,

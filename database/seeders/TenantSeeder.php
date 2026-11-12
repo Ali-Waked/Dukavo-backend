@@ -130,6 +130,7 @@ class TenantSeeder extends Seeder
             $record = Store::query()->firstOrNew(['slug' => $store['slug']]);
 
             $record->fill($attributes + [
+                'tenant_id' => $tenant->getKey(),
                 'status' => StoreStatus::Active,
                 'currency' => $tenant->currency,
                 'timezone' => $tenant->timezone,
@@ -196,6 +197,7 @@ class TenantSeeder extends Seeder
         $isNewAccount = ! $account->exists;
 
         $account->fill([
+            'tenant_id' => $tenant->getKey(),
             'store_id' => null,
             'name' => $definition['whatsapp']['name'],
             'phone_number' => $definition['whatsapp']['phone'],

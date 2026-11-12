@@ -3,6 +3,7 @@
 use App\Exceptions\BusinessRuleViolation;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\EnsurePlatformAccess;
+use App\Http\Middleware\EnsurePlatformIsAvailable;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ResolveOptionalTenant;
 use App\Http\Middleware\ResolveTenant;
@@ -69,6 +70,15 @@ return Application::configure(basePath: dirname(__DIR__))
             ResolveTenant::class,
         );
 
+        // Maintenance must short-circuit before tenant resolution: an
+        // unauthenticated request during maintenance has no tenant to resolve,
+        // and answering "tenant missing" would hide the real reason the API is
+        // unavailable.
+        $middleware->prependToPriorityList(
+            ResolveTenant::class,
+            EnsurePlatformIsAvailable::class,
+        );
+
         $middleware->alias([
             // Resolves the tenant from the `X-Tenant` header (validated against
             // the user's roles) or the user's only tenant, then binds it.
@@ -85,6 +95,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'active' => EnsureUserIsActive::class,
             // Platform operators only; must be used without the tenant alias.
             'platform' => EnsurePlatformAccess::class,
+            // Application-level maintenance mode; platform operators and the
+            // authentication routes remain reachable so it is always reversible.
+            'maintenance' => EnsurePlatformIsAvailable::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) use ($isApi): void {

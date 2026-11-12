@@ -7,6 +7,7 @@ namespace App\Listeners;
 use App\Events\Automation\AutomationEvent;
 use App\Models\Tenant;
 use App\Services\Automation\AutomationEngine;
+use App\Services\Configuration\FeatureFlagService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -28,10 +29,15 @@ final class RunAutomationRules implements ShouldQueue
     public function __construct(
         private readonly AutomationEngine $engine,
         private readonly TenantContext $tenants,
+        private readonly FeatureFlagService $features,
     ) {}
 
     public function handle(AutomationEvent $event): void
     {
+        if ($this->features->disabled('automation')) {
+            return;
+        }
+
         $tenant = Tenant::query()->find($event->tenantId());
 
         if (! $tenant instanceof Tenant) {

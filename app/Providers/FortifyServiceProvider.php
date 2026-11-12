@@ -74,8 +74,9 @@ class FortifyServiceProvider extends ServiceProvider
 
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower((string) $request->input(Fortify::username())).'|'.$request->ip());
+            $perMinute = max(1, (int) config('dukavo.security.login_rate_limit_per_minute', 5));
 
-            return Limit::perMinute(5)->by($throttleKey)->response(fn (Request $request) => response()->json([
+            return Limit::perMinute($perMinute)->by($throttleKey)->response(fn (Request $request) => response()->json([
                 'success' => false,
                 'message' => __('Too many login attempts. Please try again in :seconds seconds.', [
                     'seconds' => 60,
@@ -86,8 +87,34 @@ class FortifyServiceProvider extends ServiceProvider
             ], 429));
         });
 
-        RateLimiter::for('api', fn (Request $request) => Limit::perMinute((int) config('dukavo.rate_limits.api', 120))
-            ->by($request->user()?->id ?: $request->ip()));
+        // A second-factor challenge is keyed by the challenge token and the
+        // caller's address. The token is unguessable, but keying by it stops a
+        // single browser from hammering a challenge it legitimately holds while
+        // still leaving other devices unaffected.
+        RateLimiter::for('two-factor-challenge', function (Request $request) {
+            $token = (string) $request->input('challenge_token', '');
+
+            return Limit::perMinute(5)
+                ->by('2fa|'.($token !== '' ? hash('sha256', $token) : 'none').'|'.$request->ip())
+                ->response(fn () => response()->json([
+                    'success' => false,
+                    'message' => __('Too many verification attempts. Sign in again shortly.'),
+                    'errors' => [
+                        'code' => [__('Too many verification attempts. Please try again shortly.')],
+                    ],
+                ], 429));
+        });
+
+        RateLimiter::for('api', function (Request $request) {
+            // A write endpoint is materially more expensive than a read, so the
+            // platform's write budget is the tighter of the two. Both values are
+            // editable in Platform Settings → Security.
+            $perMinute = $request->isMethodSafe()
+                ? (int) config('dukavo.rate_limits.api', 120)
+                : (int) config('dukavo.rate_limits.write', 30);
+
+            return Limit::perMinute($perMinute)->by($request->user()?->id ?: $request->ip());
+        });
 
         // The tenant context is released at the end of every request so a
         // long-lived worker (queue, Octane) can never inherit it.

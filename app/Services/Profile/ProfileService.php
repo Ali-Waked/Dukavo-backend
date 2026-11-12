@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Profile;
 
 use App\Enums\AuditAction;
+use App\Enums\SecurityEventType;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Emails\AccountEmailService;
@@ -12,12 +13,13 @@ use App\Services\Notifications\NotificationDispatcher;
 use App\Services\Notifications\NotificationEventCatalog;
 use App\Services\Notifications\NotificationIntent;
 use App\Services\Notifications\UnsubscribeService;
+use App\Services\Security\AuthSessionService;
+use App\Services\Security\SecurityEventLogger;
 use App\Services\Users\UserService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
-use Laravel\Sanctum\PersonalAccessToken;
 use RuntimeException;
 
 /**
@@ -32,11 +34,19 @@ class ProfileService
 {
     private const AVATAR_DISK = 'public';
 
+    /** Profile fields that count as an account preference change. */
+    private const PREFERENCE_FIELDS = [
+        'locale', 'preferred_currency', 'country_code', 'city', 'timezone',
+        'theme', 'date_format', 'time_format', 'phone_country_code',
+    ];
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly AccountEmailService $accountEmails,
         private readonly NotificationDispatcher $notifications,
         private readonly UnsubscribeService $consent,
+        private readonly AuthSessionService $sessions,
+        private readonly SecurityEventLogger $securityEvents,
     ) {}
 
     /**
@@ -48,11 +58,25 @@ class ProfileService
      */
     public function update(User $user, array $attributes): User
     {
-        $before = $user->only(['name', 'phone', 'locale', 'preferred_currency']);
+        $tracked = ['name', 'phone', 'locale', 'preferred_currency', ...self::PREFERENCE_FIELDS];
+        $before = $user->only(array_values(array_unique($tracked)));
 
         $user->fill($attributes)->save();
 
-        $this->audit->recordChanges(AuditAction::Updated, $user, $before, $user->only(['name', 'phone', 'locale', 'preferred_currency']), actor: $user);
+        $after = $user->only(array_values(array_unique($tracked)));
+
+        $this->audit->recordChanges(AuditAction::Updated, $user, $before, $after, actor: $user);
+
+        $changedPreferences = array_filter(
+            self::PREFERENCE_FIELDS,
+            static fn (string $field): bool => ($before[$field] ?? null) !== ($after[$field] ?? null),
+        );
+
+        if ($changedPreferences !== []) {
+            $this->securityEvents->record($user, SecurityEventType::PreferencesUpdated, metadata: [
+                'fields' => array_values($changedPreferences),
+            ]);
+        }
 
         return $user;
     }
@@ -120,13 +144,18 @@ class ProfileService
         }
 
         // The `hashed` cast on the model hashes this on assignment.
-        $user->forceFill(['password' => $newPassword])->save();
+        $user->forceFill([
+            'password' => $newPassword,
+            'password_changed_at' => now(),
+        ])->save();
 
-        $this->revokeOtherTokens($user);
+        $this->sessions->revokeAll($user, exceptCurrent: true);
 
         $this->audit->record(AuditAction::Updated, $user, [
             'new' => ['credential' => 'password_updated'],
         ], $user);
+
+        $this->securityEvents->record($user, SecurityEventType::PasswordChanged);
 
         $this->accountEmails->send(
             user: $user,
@@ -205,13 +234,7 @@ class ProfileService
      */
     public function revokeOtherTokens(User $user): int
     {
-        $current = $user->currentAccessToken();
-
-        if ($current instanceof PersonalAccessToken) {
-            return $user->tokens()->whereKeyNot($current->getKey())->delete();
-        }
-
-        return $user->tokens()->delete();
+        return $this->sessions->revokeOthers($user, request());
     }
 
     private function deleteAvatarPath(?string $path): void

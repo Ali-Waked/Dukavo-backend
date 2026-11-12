@@ -29,6 +29,15 @@ final class NotificationEventCatalog
 
     public const string PLATFORM_TENANT_ONBOARDED = 'platform.tenant.onboarded';
 
+    /**
+     * A provider credential was refused or a provider tripped its breaker.
+     *
+     * Cooldown-limited because a misconfigured provider would otherwise
+     * notify once per request; one alert per provider per hour is enough to
+     * be seen without becoming noise.
+     */
+    public const string PLATFORM_AI_PROVIDER_UNHEALTHY = 'platform.ai.provider_unhealthy';
+
     public const string PLATFORM_TENANT_SUSPENDED = 'platform.tenant.suspended';
 
     public const string PLATFORM_TENANT_REACTIVATED = 'platform.tenant.reactivated';
@@ -178,6 +187,18 @@ final class NotificationEventCatalog
                 messages: [
                     'en' => ['title' => 'New workspace created', 'body' => '{name} created the workspace "{tenant}".'],
                     'ar' => ['title' => 'تم إنشاء مساحة عمل جديدة', 'body' => 'أنشأ {name} مساحة العمل "{tenant}".'],
+                ],
+            ),
+            new NotificationEvent(
+                key: self::PLATFORM_AI_PROVIDER_UNHEALTHY,
+                scope: NotificationScope::Platform,
+                category: 'ai',
+                severity: NotificationSeverity::Warning,
+                permission: 'ai_admin.view',
+                cooldownSeconds: 3600,
+                messages: [
+                    'en' => ['title' => 'AI provider "{provider}" is unhealthy', 'body' => 'The provider failed with "{reason}" and was taken out of rotation. Check its credential in the AI administration.'],
+                    'ar' => ['title' => 'مزود الذكاء الاصطناعي "{provider}" غير سليم', 'body' => 'فشل المزود بسبب "{reason}" وتم استبعاده من التوجيه. تحقق من بيانات الاعتماد في إدارة الذكاء الاصطناعي.'],
                 ],
             ),
             new NotificationEvent(

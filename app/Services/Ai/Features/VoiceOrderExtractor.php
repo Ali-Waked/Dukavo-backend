@@ -10,13 +10,14 @@ use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\VoiceMessage;
+use App\Services\Ai\AiExecutionEngine;
 use App\Services\Ai\AiGuard;
 use App\Services\Ai\AiUsageRecorder;
 use App\Services\Ai\Context\AiContext;
 use App\Services\Ai\Context\ContextBuilderFactory;
 use App\Services\Ai\Data\AiCompletion;
-use App\Services\Ai\Providers\ProviderRegistry;
 use App\Services\Ai\Support\PromptGuard;
+use App\Services\Ai\Support\PromptRenderer;
 use App\Services\Ai\Validation\JsonSchemaValidator;
 
 /**
@@ -43,14 +44,15 @@ final class VoiceOrderExtractor extends Feature
     private ?string $currency = null;
 
     public function __construct(
-        ProviderRegistry $providers,
+        AiExecutionEngine $engine,
         AiGuard $guard,
         AiUsageRecorder $usage,
         PromptGuard $prompts,
         JsonSchemaValidator $validator,
+        PromptRenderer $renderer,
         private readonly ContextBuilderFactory $context,
     ) {
-        parent::__construct($providers, $guard, $usage, $prompts, $validator);
+        parent::__construct($engine, $guard, $usage, $prompts, $validator, $renderer);
     }
 
     public function useCaseKey(): string

@@ -12,6 +12,7 @@ use App\Exceptions\BusinessRuleViolation;
 use App\Models\AutomationRule;
 use App\Models\User;
 use App\Services\Ai\Governance\Executors\AiActionExecutorRegistry;
+use App\Services\Configuration\FeatureFlagService;
 
 /**
  * Creates and edits automation rules after validating their structure.
@@ -24,6 +25,7 @@ final class AutomationRuleService
 {
     public function __construct(
         private readonly AiActionExecutorRegistry $executors,
+        private readonly FeatureFlagService $features,
     ) {}
 
     /**
@@ -31,6 +33,8 @@ final class AutomationRuleService
      */
     public function create(array $attributes, User $actor): AutomationRule
     {
+        $this->assertEnabled();
+
         $normalised = $this->normalise($attributes, null);
 
         // Template provenance is written only by the installer, never by the
@@ -58,6 +62,8 @@ final class AutomationRuleService
      */
     public function update(AutomationRule $rule, array $attributes, User $actor): AutomationRule
     {
+        $this->assertEnabled();
+
         $normalised = $this->normalise($attributes, $rule);
         $customised = $this->definitionChanged($rule, $normalised);
 
@@ -74,6 +80,18 @@ final class AutomationRuleService
     public function delete(AutomationRule $rule): void
     {
         $rule->delete();
+    }
+
+    /**
+     * Rules may always be deleted while the platform capability is withdrawn;
+     * creating or editing one while it cannot run would only mislead the
+     * merchant.
+     */
+    private function assertEnabled(): void
+    {
+        if ($this->features->disabled('automation')) {
+            throw BusinessRuleViolation::because('Automation is not available on this platform right now.');
+        }
     }
 
     /**

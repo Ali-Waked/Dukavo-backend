@@ -474,6 +474,310 @@ class AutomationTemplateTest extends TestCase
             ->assertNoContent();
     }
 
+    public function test_a_platform_operator_archives_an_active_template_without_losing_its_history(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template(['name' => 'Archive me']);
+        $versionCount = AutomationTemplateVersion::query()->count();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.archive', $template))
+            ->assertOk()
+            ->assertJsonPath('data.id', $template->getKey())
+            ->assertJsonPath('data.status', AutomationTemplateStatus::Archived->value);
+
+        $template->refresh();
+
+        $this->assertSame(AutomationTemplateStatus::Archived, $template->status);
+        $this->assertSame($versionCount, AutomationTemplateVersion::query()->count());
+
+        // A repeated archive is an idempotent no-op, not an error and not a
+        // second lifecycle record.
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.archive', $template))
+            ->assertOk()
+            ->assertJsonPath('data.status', AutomationTemplateStatus::Archived->value);
+
+        $this->assertSame(1, AutomationTemplate::query()->whereKey($template->getKey())->count());
+    }
+
+    public function test_an_archived_template_disappears_from_the_merchant_library(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template(['name' => 'Hidden when archived']);
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.archive', $template))
+            ->assertOk();
+
+        $listing = $this->actingAs($this->merchant)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->getJson(route('api.tenant.automation.templates.index'))
+            ->assertOk()
+            ->json('data');
+
+        $ids = collect($listing)->pluck('id');
+
+        $this->assertNotContains($template->getKey(), $ids);
+
+        $this->actingAs($this->merchant)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->getJson(route('api.tenant.automation.templates.show', $template))
+            ->assertNotFound();
+    }
+
+    public function test_an_archived_template_appears_in_the_platform_archived_listing_only(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template(['name' => 'Archived listing']);
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.archive', $template))
+            ->assertOk();
+
+        $archived = $this->actingAs($operator)
+            ->getJson(route('api.platform.automation-templates.index', ['status' => AutomationTemplateStatus::Archived->value]))
+            ->assertOk()
+            ->json('data');
+
+        $active = $this->actingAs($operator)
+            ->getJson(route('api.platform.automation-templates.index', ['status' => AutomationTemplateStatus::Active->value]))
+            ->assertOk()
+            ->json('data');
+
+        $this->assertContains($template->getKey(), collect($archived)->pluck('id'));
+        $this->assertNotContains($template->getKey(), collect($active)->pluck('id'));
+    }
+
+    public function test_a_platform_operator_restores_an_archived_template_without_changing_its_definition(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template([
+            'name' => 'Restore me',
+            'current_version' => '1.2.0',
+            'configuration_schema' => [
+                ['key' => 'note', 'label' => 'Note', 'type' => 'text', 'default' => 'Keep me'],
+            ],
+        ]);
+        $template->forceFill(['status' => AutomationTemplateStatus::Archived])->save();
+
+        $before = $template->fresh();
+        $versionCount = AutomationTemplateVersion::query()->count();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.restore', $template))
+            ->assertOk()
+            ->assertJsonPath('data.id', $before->getKey())
+            ->assertJsonPath('data.status', AutomationTemplateStatus::Active->value)
+            ->assertJsonPath('data.current_version', '1.2.0');
+
+        $after = $template->fresh();
+
+        $this->assertSame($before->getKey(), $after->getKey());
+        $this->assertSame($before->key, $after->key);
+        $this->assertSame($before->current_version, $after->current_version);
+        $this->assertSame($before->actions, $after->actions);
+        $this->assertSame($before->configuration_schema, $after->configuration_schema);
+        $this->assertSame($versionCount, AutomationTemplateVersion::query()->count());
+        $this->assertSame(1, AutomationTemplate::query()->whereKey($before->getKey())->count());
+    }
+
+    public function test_a_restored_template_reappears_in_the_merchant_library(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template(['name' => 'Visible again']);
+        $template->forceFill(['status' => AutomationTemplateStatus::Archived])->save();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.restore', $template))
+            ->assertOk();
+
+        $listing = $this->actingAs($this->merchant)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->getJson(route('api.tenant.automation.templates.index'))
+            ->assertOk()
+            ->json('data');
+
+        $this->assertContains($template->getKey(), collect($listing)->pluck('id'));
+    }
+
+    public function test_a_restored_template_leaves_the_archived_listing(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template(['name' => 'Movable']);
+        $template->forceFill(['status' => AutomationTemplateStatus::Archived])->save();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.restore', $template))
+            ->assertOk();
+
+        $archived = $this->actingAs($operator)
+            ->getJson(route('api.platform.automation-templates.index', ['status' => AutomationTemplateStatus::Archived->value]))
+            ->assertOk()
+            ->json('data');
+
+        $active = $this->actingAs($operator)
+            ->getJson(route('api.platform.automation-templates.index', ['status' => AutomationTemplateStatus::Active->value]))
+            ->assertOk()
+            ->json('data');
+
+        $this->assertNotContains($template->getKey(), collect($archived)->pluck('id'));
+        $this->assertContains($template->getKey(), collect($active)->pluck('id'));
+    }
+
+    public function test_a_restored_template_can_be_installed_again(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template(['name' => 'Installable after restore']);
+        $template->forceFill(['status' => AutomationTemplateStatus::Archived])->save();
+
+        $this->actingAs($this->merchant)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->postJson(route('api.tenant.automation.templates.install', $template), [
+                'store_id' => $this->store->getKey(),
+            ])
+            ->assertStatus(409);
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.restore', $template))
+            ->assertOk();
+
+        $this->actingAs($this->merchant)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->postJson(route('api.tenant.automation.templates.install', $template), [
+                'store_id' => $this->store->getKey(),
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.status', AutomationInstallationStatus::Installed->value);
+    }
+
+    public function test_existing_merchant_installations_are_unchanged_by_archive_and_restore(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template([
+            'name' => 'Keep my installation',
+            'actions' => [
+                ['type' => 'create_task', 'config' => ['title' => '{{ config.label }} {{ order_number }}']],
+            ],
+            'configuration_schema' => [
+                ['key' => 'label', 'label' => 'Label', 'type' => 'text', 'required' => true],
+            ],
+        ]);
+
+        $this->actingAs($this->merchant)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->postJson(route('api.tenant.automation.templates.install', $template), [
+                'store_id' => $this->store->getKey(),
+                'configuration' => ['label' => 'Custom merchant label'],
+            ])
+            ->assertCreated();
+
+        $installation = AutomationTemplateInstallation::query()
+            ->withoutGlobalScopes()
+            ->where('automation_template_id', $template->getKey())
+            ->sole();
+        $rule = AutomationRule::query()->withoutGlobalScopes()
+            ->whereKey($installation->automation_rule_id)
+            ->sole();
+
+        $this->actingAs($this->merchant)
+            ->withHeader('X-Tenant', $this->tenant->slug)
+            ->postJson(route('api.tenant.automation.installations.enable', $installation->getKey()))
+            ->assertOk();
+
+        $before = $installation->fresh();
+        $ruleBefore = $rule->fresh();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.archive', $template))
+            ->assertOk();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.restore', $template))
+            ->assertOk();
+
+        $after = $installation->fresh();
+        $ruleAfter = $rule->fresh();
+
+        $this->assertSame($before->getKey(), $after->getKey());
+        $this->assertSame($before->status, $after->status);
+        $this->assertSame($before->installed_version, $after->installed_version);
+        $this->assertSame($before->automation_rule_id, $after->automation_rule_id);
+        $this->assertSame($ruleBefore->status, $ruleAfter->status);
+        $this->assertSame($ruleBefore->actions, $ruleAfter->actions);
+        $this->assertSame('Custom merchant label {{ order_number }}', $ruleAfter->actions[0]['config']['title']);
+        $this->assertSame(1, AutomationTemplateInstallation::query()->withoutGlobalScopes()->where('automation_template_id', $template->getKey())->count());
+        $this->assertSame(1, AutomationRule::query()->withoutGlobalScopes()->where('automation_template_id', $template->getKey())->count());
+    }
+
+    public function test_merchants_cannot_archive_or_restore_templates(): void
+    {
+        $template = $this->template(['name' => 'Protected']);
+
+        $this->actingAs($this->merchant)
+            ->postJson(route('api.platform.automation-templates.archive', $template))
+            ->assertForbidden();
+
+        $template->forceFill(['status' => AutomationTemplateStatus::Archived])->save();
+
+        $this->actingAs($this->merchant)
+            ->postJson(route('api.platform.automation-templates.restore', $template))
+            ->assertForbidden();
+
+        $this->assertSame(AutomationTemplateStatus::Archived, $template->fresh()->status);
+    }
+
+    public function test_repeated_restore_requests_do_not_create_duplicates(): void
+    {
+        $operator = $this->platformUser();
+        $template = $this->template(['name' => 'Restore twice']);
+        $template->forceFill(['status' => AutomationTemplateStatus::Archived])->save();
+
+        $count = AutomationTemplate::query()->count();
+        $versionCount = AutomationTemplateVersion::query()->count();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.restore', $template))
+            ->assertOk()
+            ->assertJsonPath('data.status', AutomationTemplateStatus::Active->value);
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.restore', $template))
+            ->assertOk()
+            ->assertJsonPath('data.status', AutomationTemplateStatus::Active->value);
+
+        $this->assertSame($count, AutomationTemplate::query()->count());
+        $this->assertSame($versionCount, AutomationTemplateVersion::query()->count());
+        $this->assertSame(1, AutomationTemplate::query()->where('key', $template->key)->count());
+    }
+
+    public function test_invalid_template_lifecycle_transitions_are_rejected(): void
+    {
+        $operator = $this->platformUser();
+        $draft = $this->template(['name' => 'Draft template'])->forceFill([
+            'status' => AutomationTemplateStatus::Draft,
+        ]);
+        $draft->save();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.archive', $draft))
+            ->assertStatus(409);
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.restore', $draft))
+            ->assertStatus(409);
+
+        $archived = $this->template(['name' => 'Archived template']);
+        $archived->forceFill(['status' => AutomationTemplateStatus::Archived])->save();
+
+        $this->actingAs($operator)
+            ->postJson(route('api.platform.automation-templates.publish', $archived))
+            ->assertStatus(409);
+
+        $this->assertSame(AutomationTemplateStatus::Draft, $draft->fresh()->status);
+        $this->assertSame(AutomationTemplateStatus::Archived, $archived->fresh()->status);
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */

@@ -13,16 +13,24 @@ use App\Http\Requests\Conversations\IndexConversationsRequest;
 use App\Http\Requests\Conversations\SendMessageRequest;
 use App\Http\Requests\Conversations\SendNoteRequest;
 use App\Http\Requests\Conversations\SendTemplateRequest;
+use App\Http\Requests\Conversations\SendVoiceReplyRequest;
 use App\Http\Requests\Conversations\StartConversationRequest;
 use App\Http\Requests\Conversations\UpdateConversationRequest;
 use App\Http\Resources\ConversationResource;
 use App\Http\Resources\MessageResource;
 use App\Http\Resources\UserResource;
+use App\Models\ChannelConnection;
 use App\Models\Conversation;
 use App\Models\ConversationMessage;
 use App\Models\Customer;
+use App\Services\Ai\Exceptions\AiRequestFailed;
+use App\Services\Ai\Exceptions\AiUnavailable;
+use App\Services\Channels\Data\OutboundMessage;
+use App\Services\Channels\Exceptions\ChannelDeliveryFailed;
+use App\Services\Channels\OutboundMessageDispatcher;
 use App\Services\Channels\WhatsApp\Contracts\WhatsAppGateway;
 use App\Services\Conversations\ConversationService;
+use App\Services\Voice\VoiceReplyService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,6 +52,8 @@ class ConversationController extends Controller
     public function __construct(
         private readonly ConversationService $conversations,
         private readonly WhatsAppGateway $gateway,
+        private readonly OutboundMessageDispatcher $dispatcher,
+        private readonly VoiceReplyService $voiceReplies,
     ) {}
 
     public function index(IndexConversationsRequest $request): AnonymousResourceCollection
@@ -157,12 +167,26 @@ class ConversationController extends Controller
             $providerId = $this->gateway->sendText($conversation, $request->validated('body'), $idempotencyKey);
             $message = $this->messageByProviderId($conversation, $providerId);
         } else {
-            $message = $this->conversations->addMessage($conversation, MessageDirection::Outbound, [
-                'user_id' => $request->user()->getKey(),
-                'type' => MessageType::Text,
-                'body' => $request->validated('body'),
-                'idempotency_key' => $idempotencyKey,
-            ]);
+            $connection = $this->connectionFor($conversation);
+
+            if ($connection === null) {
+                return ApiResponse::error(
+                    sprintf('The %s channel is not connected for this workspace. Connect it before replying.', $conversation->channel),
+                    409,
+                );
+            }
+
+            try {
+                $message = $this->dispatcher->send(
+                    $connection,
+                    $conversation,
+                    OutboundMessage::text((string) $request->validated('body')),
+                    $request->user()->getKey(),
+                    $idempotencyKey,
+                );
+            } catch (ChannelDeliveryFailed $exception) {
+                return ApiResponse::error($exception->getMessage(), 422);
+            }
         }
 
         return ApiResponse::created('Message sent.', new MessageResource($message->load('author')));
@@ -337,6 +361,90 @@ class ConversationController extends Controller
         $this->conversations->changeStatus($conversation, ConversationStatus::Closed);
 
         return response()->noContent();
+    }
+
+    /**
+     * Whether this conversation can receive a spoken reply right now.
+     *
+     * The UI asks before offering the button so it never presents an action
+     * that would fail: the channel must be connected and able to carry audio,
+     * and a speech engine must be configured.
+     */
+    public function voiceReplyAvailability(Conversation $conversation): JsonResponse
+    {
+        $connection = $this->connectionFor($conversation);
+        $available = $connection !== null && $this->voiceReplies->supports($connection);
+
+        return ApiResponse::success('', [
+            'available' => $available,
+            'channel' => $conversation->channel,
+            'provider' => (string) config('ai.tts.provider', 'piper'),
+            'reason' => $available ? null : ($connection === null
+                ? 'The channel is not connected for this workspace.'
+                : 'Voice replies are not configured, or this channel cannot send audio.'),
+        ]);
+    }
+
+    /**
+     * Send a written answer as a voice note on the conversation's channel.
+     *
+     * Synthesis is explicit: a merchant asks for this reply to be spoken. The
+     * text never becomes a separate message row, so the thread contains one
+     * audio bubble rather than a text copy nobody received.
+     */
+    public function voiceReply(SendVoiceReplyRequest $request, Conversation $conversation): JsonResponse
+    {
+        $connection = $this->connectionFor($conversation);
+
+        if ($connection === null) {
+            return ApiResponse::error(
+                sprintf('The %s channel is not connected for this workspace.', $conversation->channel),
+                409,
+            );
+        }
+
+        if (! $this->voiceReplies->supports($connection)) {
+            return ApiResponse::error(
+                'Voice replies are not available for this conversation. Check the speech engine configuration and the channel audio capability.',
+                409,
+            );
+        }
+
+        try {
+            $message = $this->voiceReplies->reply(
+                $connection,
+                $conversation,
+                (string) $request->validated('body'),
+                $request->user()->getKey(),
+                $request->validated('idempotency_key'),
+            );
+        } catch (ChannelDeliveryFailed $exception) {
+            return ApiResponse::error($exception->getMessage(), 422);
+        } catch (AiUnavailable|AiRequestFailed $exception) {
+            return $exception->render($request);
+        }
+
+        return ApiResponse::created('Voice reply sent.', new MessageResource($message));
+    }
+
+    /**
+     * The usable connection a non-WhatsApp conversation sends through.
+     *
+     * A conversation is scoped to a store when it has one; otherwise the first
+     * connected channel for the workspace is used. Returning null is the honest
+     * answer when the channel is not connected — the controller then refuses
+     * the send instead of writing a message nobody received.
+     */
+    private function connectionFor(Conversation $conversation): ?ChannelConnection
+    {
+        return ChannelConnection::query()
+            ->where('channel', $conversation->channel)
+            ->usable()
+            ->when($conversation->store_id !== null, fn ($query) => $query->where(function ($scoped) use ($conversation): void {
+                $scoped->where('store_id', $conversation->store_id)->orWhereNull('store_id');
+            }))
+            ->orderByRaw('store_id IS NULL')
+            ->first();
     }
 
     private function messageByProviderId(Conversation $conversation, string $providerId): ConversationMessage

@@ -166,7 +166,7 @@ class PublicMarketingContentTest extends TestCase
         $this->assertNull($plans[1]['price']);
 
         $questions = $this->getJson('/api/v1/public/faq')->assertOk()->json('data');
-        $this->assertCount(6, $questions);
+        $this->assertCount(20, $questions);
     }
 
     public function test_faq_serves_arabic_when_requested(): void
@@ -209,7 +209,7 @@ class PublicMarketingContentTest extends TestCase
 
         $rows = $this->getJson('/api/v1/public/faq?locale=ar')->assertOk()->json('data');
 
-        $this->assertCount(6, $rows);
+        $this->assertCount(20, $rows);
 
         foreach ($rows as $row) {
             $this->assertNotSame('', trim((string) $row['question']));

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\ThemePreference;
 use App\Enums\UserStatus;
 use App\Http\Resources\ProductImageResource;
 use App\Models\Concerns\HasRoles;
@@ -33,8 +34,13 @@ use Laravel\Sanctum\HasApiTokens;
  * through `user_roles` with a tenant id, never through a single `role_id`
  * column on this table.
  */
-#[Fillable(['name', 'email', 'phone', 'password', 'status', 'locale', 'preferred_currency', 'avatar_path', 'notification_preferences'])]
-#[Hidden(['password', 'remember_token'])]
+#[Fillable([
+    'name', 'email', 'phone', 'password', 'status', 'locale', 'preferred_currency',
+    'avatar_path', 'notification_preferences', 'bio', 'country_code', 'city', 'timezone',
+    'theme', 'date_format', 'time_format', 'phone_country_code', 'phone_verified_at',
+    'password_changed_at', 'preferences_initialized_at', 'preferences_source',
+])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
@@ -85,7 +91,48 @@ class User extends Authenticatable implements MustVerifyEmail
             'password' => 'hashed',
             'status' => UserStatus::class,
             'notification_preferences' => 'array',
+            'theme' => ThemePreference::class,
+            'phone_verified_at' => 'datetime',
+            'password_changed_at' => 'datetime',
+            'preferences_initialized_at' => 'datetime',
+            'preferences_source' => 'array',
+            // Credentials, not profile data. The encrypted cast keeps both at
+            // rest encrypted and the `Hidden` attribute keeps either from ever
+            // appearing in a JSON payload by accident.
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Whether a confirmed second factor protects this account.
+     */
+    public function hasTwoFactorEnabled(): bool
+    {
+        return $this->two_factor_confirmed_at !== null
+            && is_string($this->two_factor_secret)
+            && $this->two_factor_secret !== '';
+    }
+
+    /**
+     * The account's append-only security history.
+     *
+     * @return HasMany<SecurityEvent, $this>
+     */
+    public function securityEvents(): HasMany
+    {
+        return $this->hasMany(SecurityEvent::class);
+    }
+
+    /**
+     * Outstanding second-factor login challenges for this account.
+     *
+     * @return HasMany<TwoFactorChallenge, $this>
+     */
+    public function twoFactorChallenges(): HasMany
+    {
+        return $this->hasMany(TwoFactorChallenge::class);
     }
 
     public function isActive(): bool

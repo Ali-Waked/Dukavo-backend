@@ -11,6 +11,7 @@ use App\Models\AiUsage;
 use App\Models\Store;
 use App\Models\Tenant;
 use App\Models\Translation;
+use App\Models\TranslationRevision;
 use App\Services\Ai\Exceptions\AiRequestFailed;
 use App\Services\Ai\Features\TranslationAssistant;
 use App\Services\Storefront\StorefrontSettings;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The translation review workflow.
@@ -316,7 +318,7 @@ final class TranslationService
         ?Tenant $tenant,
         ?int $userId,
     ): array {
-        $rows = $this->markGenerating($entity, $model, $sources, $source, $target, $tenant);
+        ['rows' => $rows, 'previous' => $previous] = $this->markGenerating($entity, $model, $sources, $source, $target, $tenant);
 
         try {
             $answer = $this->assistant->translate(
@@ -330,7 +332,7 @@ final class TranslationService
                 ['entity' => $entity->label, 'name' => $entity->nameFor($model)],
             );
         } catch (\Throwable $exception) {
-            $this->markFailed($rows, 'provider_failed', ['message' => $exception->getMessage()]);
+            $this->markFailed($rows, 'provider_failed', ['message' => $exception->getMessage()], $previous, $userId);
 
             throw $exception;
         }
@@ -345,7 +347,7 @@ final class TranslationService
         $errors = $this->validator->validateMany($sources, $translated, $formats, $terms);
 
         if ($errors !== []) {
-            $this->markFailed($rows, 'translation_validation_failed', ['fields' => $errors]);
+            $this->markFailed($rows, 'translation_validation_failed', ['fields' => $errors], $previous, $userId);
 
             throw AiRequestFailed::invalidOutput('the translation did not preserve required content: '.json_encode($errors));
         }
@@ -358,7 +360,7 @@ final class TranslationService
             }
 
             if (trim($text) === '') {
-                $this->markFailed($rows, 'translation_empty', ['field' => $field]);
+                $this->markFailed($rows, 'translation_empty', ['field' => $field], $previous, $userId);
 
                 throw AiRequestFailed::invalidOutput('a translated field was empty after sanitisation');
             }
@@ -381,6 +383,8 @@ final class TranslationService
                 'rejection_reason' => null,
                 'metadata' => null,
             ])->save();
+
+            $this->recordRevision($row, $previous[$field] ?? null, $userId);
         }
 
         return [
@@ -399,6 +403,8 @@ final class TranslationService
             throw BusinessRuleViolation::because('A translation cannot be empty. Reject it instead.', [], 'translation_empty');
         }
 
+        $previous = $this->snapshot($translation);
+
         $translation->forceFill([
             'translated_text' => $text,
             'origin' => TranslationOrigin::Manual,
@@ -409,6 +415,7 @@ final class TranslationService
             'rejection_reason' => null,
         ])->save();
 
+        $this->recordRevision($translation, $previous, $userId);
         $this->forgetEntityCache($translation);
 
         return $translation->refresh();
@@ -435,17 +442,28 @@ final class TranslationService
 
         $entity = $this->registry->get((string) $translation->translatable_type);
         $model = $entity === null ? null : $this->modelFor($translation, $entity, $tenant);
+        $previous = $this->snapshot($translation);
 
-        $translation->forceFill([
-            'status' => TranslationStatus::Approved,
-            'published_text' => $translation->translated_text,
-            'reviewed_at' => now(),
-            'reviewed_by' => $userId,
-            'rejection_reason' => null,
-        ])->save();
+        DB::transaction(function () use ($translation, $userId, $entity, $model, $previous): void {
+            $translation->forceFill([
+                'status' => TranslationStatus::Approved,
+                'published_text' => $translation->translated_text,
+                'reviewed_at' => now(),
+                'reviewed_by' => $userId,
+                'rejection_reason' => null,
+            ])->save();
+
+            // Mirroring runs inside the transaction because a localized slug
+            // collision is a failure: the row must not be marked approved while
+            // the URL the storefront would read was never written.
+            if ($entity !== null && $model instanceof Model) {
+                $entity->mirror($model, (string) $translation->field, (string) $translation->locale, (string) $translation->translated_text);
+            }
+
+            $this->recordRevision($translation, $previous, $userId);
+        });
 
         if ($entity !== null && $model instanceof Model) {
-            $entity->mirror($model, (string) $translation->field, (string) $translation->locale, (string) $translation->translated_text);
             $this->forgetEntityCache($translation);
         }
 
@@ -454,6 +472,8 @@ final class TranslationService
 
     public function reject(Translation $translation, ?string $reason, int $userId): Translation
     {
+        $previous = $this->snapshot($translation);
+
         $translation->forceFill([
             'status' => TranslationStatus::Rejected,
             'rejection_reason' => $reason === null || trim($reason) === '' ? null : mb_substr(trim($reason), 0, 255),
@@ -461,7 +481,117 @@ final class TranslationService
             'reviewed_by' => $userId,
         ])->save();
 
+        $this->recordRevision($translation, $previous, $userId);
+
         return $translation->refresh();
+    }
+
+    /**
+     * Save merchant-authored copy for one record.
+     *
+     * This is the inline language-tab editor, not the AI assistant: a person
+     * typed the value and pressed save, so the row is immediately approved.
+     * AI output never takes this path. Rows are written in a transaction because
+     * a localized slug is mirrored onto the product and a collision must roll
+     * the whole save back rather than leave half the language approved.
+     *
+     * @param  array<string, array<string, string|null>>  $translations  locale => field => text
+     * @return list<array<string, mixed>>
+     */
+    public function saveManual(
+        TranslationEntity $entity,
+        Model $model,
+        array $translations,
+        int $userId,
+        ?Tenant $tenant = null,
+    ): array {
+        $fields = $entity->fieldMap();
+        $sourceLocale = $this->sourceLocaleFor($entity, $model);
+        $saved = [];
+
+        DB::transaction(function () use ($entity, $model, $translations, $userId, $tenant, $fields, $sourceLocale, &$saved): void {
+            foreach ($translations as $locale => $values) {
+                $locale = strtolower(trim((string) $locale));
+
+                if ($locale === '' || ! is_array($values)) {
+                    continue;
+                }
+
+                if (! in_array($locale, $this->enabledLocales($entity, $model), true)) {
+                    throw BusinessRuleViolation::because(
+                        'That language is not enabled for this store.',
+                        ['locale' => $locale],
+                        'translation_locale_disabled',
+                    );
+                }
+
+                foreach ($values as $field => $text) {
+                    $field = (string) $field;
+
+                    if (! isset($fields[$field])) {
+                        throw BusinessRuleViolation::because(
+                            'That field cannot be translated.',
+                            ['field' => $field],
+                            'translation_field_unknown',
+                        );
+                    }
+
+                    if (! is_string($text)) {
+                        continue;
+                    }
+
+                    $text = trim($text);
+
+                    // An empty value is an omission, not a request to erase an
+                    // approved translation. Clearing copy would blank the
+                    // storefront with no review step, so it is refused.
+                    if ($text === '') {
+                        continue;
+                    }
+
+                    if ($fields[$field]->format === 'html') {
+                        $text = $this->sanitizer->clean($text);
+                    }
+
+                    $source = $entity->sourceText($model, $field);
+                    $row = Translation::query()->firstOrNew([
+                        'translatable_type' => $model->getMorphClass(),
+                        'translatable_id' => $model->getKey(),
+                        'locale' => $locale,
+                        'field' => $field,
+                    ]);
+                    $previous = $this->snapshot($row);
+
+                    $row->fill([
+                        'tenant_id' => $tenant?->getKey(),
+                        'store_id' => $entity->storeIdFor($model),
+                        'source_locale' => $row->source_locale ?: $sourceLocale,
+                        'source_text' => $source,
+                        'source_hash' => $source === null ? null : $this->hash($source),
+                        'translated_text' => $text,
+                        'published_text' => $text,
+                        'status' => TranslationStatus::Approved,
+                        'origin' => TranslationOrigin::Manual,
+                        'manually_edited' => true,
+                        'generated_at' => $row->generated_at,
+                        'reviewed_at' => now(),
+                        'reviewed_by' => $userId,
+                        'rejection_reason' => null,
+                        'metadata' => null,
+                    ])->save();
+
+                    $entity->mirror($model, $field, $locale, $text);
+                    $this->recordRevision($row, $previous, $userId);
+                    $saved[] = $this->present($row);
+                }
+            }
+        });
+
+        if (method_exists($model, 'forgetTranslationCache')) {
+            $model->forgetTranslationCache();
+        }
+
+        return $saved;
     }
 
     public function regenerate(Translation $translation, bool $confirmOverwrite, ?int $userId): array
@@ -690,11 +820,12 @@ final class TranslationService
 
     /**
      * @param  array<string, string>  $sources
-     * @return array<string, Translation>
+     * @return array{rows: array<string, Translation>, previous: array<string, array{text: ?string, status: ?string, origin: ?string}>}
      */
     private function markGenerating(TranslationEntity $entity, Model $model, array $sources, string $sourceLocale, string $target, ?Tenant $tenant): array
     {
         $rows = [];
+        $previous = [];
 
         foreach ($sources as $field => $source) {
             $row = Translation::query()->firstOrNew([
@@ -703,6 +834,8 @@ final class TranslationService
                 'locale' => $target,
                 'field' => $field,
             ]);
+
+            $previous[$field] = $this->snapshot($row);
 
             $row->fill([
                 'tenant_id' => $tenant?->getKey(),
@@ -719,21 +852,78 @@ final class TranslationService
             $rows[$field] = $row;
         }
 
-        return $rows;
+        return ['rows' => $rows, 'previous' => $previous];
     }
 
     /**
      * @param  array<string, Translation>  $rows
      * @param  array<string, mixed>  $metadata
+     * @param  array<string, array{text: ?string, status: ?string, origin: ?string}>  $previous
      */
-    private function markFailed(array $rows, string $reason, array $metadata = []): void
+    private function markFailed(array $rows, string $reason, array $metadata = [], array $previous = [], ?int $userId = null): void
     {
-        foreach ($rows as $row) {
+        foreach ($rows as $field => $row) {
             $row->forceFill([
                 'status' => TranslationStatus::Failed,
                 'metadata' => ['reason' => $reason] + $metadata,
             ])->save();
+
+            $this->recordRevision($row, $previous[$field] ?? null, $userId);
         }
+    }
+
+    /**
+     * The state of a row before a write, used to append an audit revision.
+     *
+     * @return array{text: ?string, status: ?string, origin: ?string}
+     */
+    private function snapshot(Translation $row): array
+    {
+        return [
+            'text' => $row->translated_text,
+            'status' => $row->status?->value,
+            'origin' => $row->origin?->value,
+        ];
+    }
+
+    /**
+     * Append an immutable revision for a transition that already happened.
+     *
+     * @param  array{text: ?string, status: ?string, origin: ?string}|null  $previous
+     */
+    private function recordRevision(Translation $row, ?array $previous, ?int $userId): void
+    {
+        if (! $row->exists) {
+            return;
+        }
+
+        $previous ??= ['text' => null, 'status' => null, 'origin' => null];
+
+        TranslationRevision::query()->create([
+            'translation_id' => $row->getKey(),
+            'tenant_id' => $row->tenant_id,
+            'locale' => (string) $row->locale,
+            'field' => (string) $row->field,
+            'old_text' => $previous['text'],
+            'new_text' => $row->translated_text,
+            'old_status' => $previous['status'],
+            'new_status' => $row->status?->value,
+            'origin' => $row->origin?->value,
+            'changed_by' => $userId,
+        ]);
+    }
+
+    /**
+     * The language the canonical copy is written in for this record.
+     */
+    private function sourceLocaleFor(TranslationEntity $entity, Model $model): string
+    {
+        $store = $this->storeFor($entity, $model);
+        $locale = $store?->default_locale;
+
+        return is_string($locale) && trim($locale) !== ''
+            ? strtolower(trim($locale))
+            : (string) config('dukavo.locales.default', 'en');
     }
 
     private function sourceChanged(Translation $translation): bool

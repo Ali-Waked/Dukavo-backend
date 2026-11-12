@@ -9,6 +9,7 @@ use App\Http\Requests\Translations\ApproveTranslationsRequest;
 use App\Http\Requests\Translations\GenerateTranslationsRequest;
 use App\Http\Requests\Translations\RegenerateTranslationRequest;
 use App\Http\Requests\Translations\RejectTranslationRequest;
+use App\Http\Requests\Translations\SaveTranslationsRequest;
 use App\Http\Requests\Translations\UpdateTranslationRequest;
 use App\Models\Translation;
 use App\Services\Translation\TranslationEntity;
@@ -133,6 +134,27 @@ final class TranslationController extends Controller
         );
 
         return ApiResponse::success('Translation updated and returned to review.', $this->translations->present($updated));
+    }
+
+    /**
+     * Save the inline language-tab editor for one record.
+     *
+     * A merchant typed this copy and pressed save, so it is approved and
+     * mirrored immediately. The AI path never reaches this method.
+     */
+    public function save(SaveTranslationsRequest $request, string $entity, int $id): JsonResponse
+    {
+        ['entity' => $definition, 'model' => $model] = $this->resolved($entity, $id);
+
+        $saved = $this->translations->saveManual(
+            $definition,
+            $model,
+            $request->validated('translations'),
+            (int) $request->user()?->getKey(),
+            $this->tenants->tenant(),
+        );
+
+        return ApiResponse::success('Translations saved.', ['translations' => $saved]);
     }
 
     public function approve(Request $request, Translation $translation): JsonResponse

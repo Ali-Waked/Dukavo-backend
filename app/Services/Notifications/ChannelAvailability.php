@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Notifications;
 
 use App\Enums\NotificationChannel;
+use App\Services\Configuration\FeatureFlagService;
 
 /**
  * Whether a channel can actually be sent on right now.
@@ -18,6 +19,8 @@ use App\Enums\NotificationChannel;
  */
 final class ChannelAvailability
 {
+    public function __construct(private readonly FeatureFlagService $features) {}
+
     public function isAvailable(NotificationChannel $channel): bool
     {
         return $this->reason($channel) === null;
@@ -28,6 +31,18 @@ final class ChannelAvailability
      */
     public function reason(NotificationChannel $channel): ?string
     {
+        // A platform availability flag is a superset switch: it withdraws the
+        // channel even when the deployment's own channel settings are on.
+        $flag = match ($channel) {
+            NotificationChannel::Mail => 'email_notifications',
+            NotificationChannel::Push => 'push_notifications',
+            NotificationChannel::WhatsApp => 'whatsapp',
+        };
+
+        if ($this->features->disabled($flag)) {
+            return $flag.'_feature_disabled';
+        }
+
         return match ($channel) {
             NotificationChannel::Mail => config('dukavo.notifications.channels.mail.enabled', true)
                 ? null

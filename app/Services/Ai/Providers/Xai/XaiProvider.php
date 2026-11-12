@@ -9,6 +9,7 @@ use App\Services\Ai\Data\AiCompletion;
 use App\Services\Ai\Data\AiMessage;
 use App\Services\Ai\Exceptions\AiRequestFailed;
 use App\Services\Ai\Exceptions\AiUnavailable;
+use App\Services\Ai\Providers\ProviderErrorMapper;
 use App\Services\Ai\Support\AiCapability;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
@@ -104,8 +105,8 @@ final class XaiProvider implements AiProvider
             $response = $this->client()
                 ->retry($this->backoffDelays(), 0, $this->shouldRetry(...))
                 ->post($this->url(), $payload);
-        } catch (ConnectionException $exception) {
-            throw AiUnavailable::provider('connection', ['message' => $exception->getMessage()]);
+        } catch (ConnectionException) {
+            throw AiUnavailable::provider('connection', ['provider' => 'xai']);
         } catch (RequestException $exception) {
             throw $this->mapFailure($exception->response);
         }
@@ -218,17 +219,7 @@ final class XaiProvider implements AiProvider
 
     private function mapFailure(Response $response): AiUnavailable|AiRequestFailed
     {
-        $status = $response->status();
-
-        // A rate limit or a provider-side fault is expected and recoverable.
-        if ($status === 429 || $response->serverError()) {
-            return AiUnavailable::provider('provider_status', ['provider_status' => $status]);
-        }
-
-        // Everything else is a request we should not repeat verbatim.
-        $providerCode = $response->json('error.code') ?? $response->json('code');
-
-        return AiRequestFailed::providerRejected($status, is_string($providerCode) ? $providerCode : null);
+        return ProviderErrorMapper::map($response, 'xai');
     }
 
     private function completion(Response $response, bool $expectsStructure, int $latencyMs): AiCompletion

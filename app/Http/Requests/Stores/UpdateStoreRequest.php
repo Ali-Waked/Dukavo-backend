@@ -8,6 +8,7 @@ use App\Enums\StoreStatus;
 use App\Http\Requests\ApiRequest;
 use App\Models\Store;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * Updating a store. `is_default` is accepted but the service refuses to unset it;
@@ -42,7 +43,32 @@ class UpdateStoreRequest extends ApiRequest
             'timezone' => ['sometimes', 'timezone'],
             'enabled_locales' => ['sometimes', 'nullable', 'array', 'max:25'],
             'enabled_locales.*' => ['required', 'string', Rule::in((array) config('dukavo.locales.supported', ['en']))],
+            'default_locale' => ['sometimes', 'nullable', 'string', Rule::in((array) config('dukavo.locales.supported', ['en']))],
             'is_default' => ['sometimes', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $default = $this->input('default_locale');
+
+            if (! is_string($default) || $default === '') {
+                return;
+            }
+
+            $store = $this->route('store');
+            $enabled = $this->input('enabled_locales');
+
+            if (! is_array($enabled) || $enabled === []) {
+                $enabled = $store instanceof Store && is_array($store->enabled_locales) && $store->enabled_locales !== []
+                    ? $store->enabled_locales
+                    : (array) config('dukavo.locales.enabled_default', ['en', 'ar']);
+            }
+
+            if (! in_array($default, $enabled, true)) {
+                $validator->errors()->add('default_locale', 'The default language must be one of the enabled languages.');
+            }
+        });
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Resources\Storefront;
 
 use App\Models\ProductVariant;
+use App\Support\PreferredLocale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,10 +20,12 @@ class PublicProductVariantResource extends JsonResource
     public function toArray(Request $request): array
     {
         $available = (int) $this->inventories->sum(fn ($inventory): int => $inventory->available());
+        $locale = PreferredLocale::from($request);
 
         return [
             'id' => $this->id,
-            'name' => $this->name,
+            'name' => $this->resource->localizedName($locale),
+            'description' => $this->resource->localizedDescription($locale),
             'sku' => $this->sku,
             'price' => (float) $this->price,
             'is_default' => $this->is_default,

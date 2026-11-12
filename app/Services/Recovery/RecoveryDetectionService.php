@@ -19,6 +19,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\RecoveryOpportunity;
 use App\Models\Tenant;
+use App\Services\Configuration\FeatureFlagService;
 use App\Services\Currency\CurrencyCatalog;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonInterface;
@@ -44,6 +45,7 @@ final class RecoveryDetectionService
         private readonly TenantContext $tenants,
         private readonly RecoveryEventService $events,
         private readonly CurrencyCatalog $currencies,
+        private readonly FeatureFlagService $features,
     ) {}
 
     /**
@@ -56,7 +58,7 @@ final class RecoveryDetectionService
 
             $stats = ['created' => 0, 'expired' => 0, 'reopened' => 0, 'skipped' => 0, 'failed' => 0];
 
-            if (! (bool) config('recovery.enabled', true)) {
+            if (! (bool) config('recovery.enabled', true) || $this->features->disabled('recovery')) {
                 return $stats;
             }
 

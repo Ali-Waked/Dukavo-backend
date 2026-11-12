@@ -35,6 +35,6 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/health', HealthController::class);
 
-Route::prefix('v1')->group(function (): void {
+Route::prefix('v1')->middleware('maintenance')->group(function (): void {
     require __DIR__.'/api/v1.php';
 });

@@ -65,7 +65,10 @@ class ProductController extends Controller
 
     public function store(StoreProductRequest $request): JsonResponse
     {
-        return ApiResponse::created('Product created.', new ProductResource($this->products->create($request->validated())));
+        return ApiResponse::created('Product created.', new ProductResource($this->products->create(
+            $request->validated(),
+            $request->user()?->getKey(),
+        )));
     }
 
     /**
@@ -109,7 +112,11 @@ class ProductController extends Controller
 
     public function update(UpdateProductRequest $request, Product $product): ProductResource
     {
-        return new ProductResource($this->products->update($product, $request->validated()));
+        return new ProductResource($this->products->update(
+            $product,
+            $request->validated(),
+            $request->user()?->getKey(),
+        ));
     }
 
     /**

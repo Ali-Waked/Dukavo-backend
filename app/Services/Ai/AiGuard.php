@@ -6,6 +6,7 @@ namespace App\Services\Ai;
 
 use App\Models\AiUsage;
 use App\Services\Ai\Exceptions\AiUnavailable;
+use App\Services\Configuration\FeatureFlagService;
 use Illuminate\Support\Carbon;
 
 /**
@@ -23,6 +24,8 @@ use Illuminate\Support\Carbon;
  */
 final class AiGuard
 {
+    public function __construct(private readonly FeatureFlagService $features) {}
+
     /**
      * Resolve a feature's configuration, or refuse when it is off.
      *
@@ -41,7 +44,8 @@ final class AiGuard
 
     public function enabled(): bool
     {
-        return (bool) config('ai.enabled');
+        return (bool) config('ai.enabled')
+            && $this->features->enabled('ai_assistant');
     }
 
     /**
@@ -88,18 +92,27 @@ final class AiGuard
     }
 
     /**
-     * How many provider calls were made for this feature today.
+     * How many logical AI requests were made for this feature today.
      *
-     * Failed attempts are counted: they were billed.
+     * Failed attempts are counted: they were billed. Attempts that share a
+     * correlation id are one logical request — the retries and provider
+     * failovers inside it each have their own accounting row, but they are
+     * one spend of the caller's allowance, not one per provider hop. Rows
+     * from before correlation ids existed carry none, so each counts as its
+     * own request rather than collapsing together.
      */
     private function usedToday(string $feature, ?int $tenantId, ?int $userId): int
     {
-        return AiUsage::query()
+        $requests = AiUsage::query()
             ->where('feature', $feature)
             ->where('created_at', '>=', $this->startOfDay())
             ->when($tenantId !== null, fn ($query) => $query->where('tenant_id', $tenantId))
             ->when($userId !== null, fn ($query) => $query->where('user_id', $userId))
-            ->count();
+            ->toBase()
+            ->selectRaw('COUNT(DISTINCT COALESCE(correlation_id, CAST(id AS CHAR))) as requests')
+            ->value('requests');
+
+        return (int) $requests;
     }
 
     /**

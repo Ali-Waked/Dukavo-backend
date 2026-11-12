@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Ai\Exceptions;
 
+use App\Enums\AiErrorCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -76,9 +77,91 @@ class AiUnavailable extends RuntimeException
         );
     }
 
+    /**
+     * The credential was refused by the provider.
+     *
+     * The engine marks the provider's configuration unhealthy and notifies
+     * the platform owner, then serves the request from another provider when
+     * one is configured.
+     */
+    public static function authentication(string $provider, int $status): self
+    {
+        return new self(
+            'AI assistance is temporarily unavailable. Please try again shortly.',
+            'ai_provider_authentication',
+            ['reason' => 'authentication', 'provider' => $provider, 'provider_status' => $status],
+        );
+    }
+
+    /**
+     * The provider rate limited the call.
+     *
+     * `retryAfterSeconds` carries the provider's own Retry-After when it sent
+     * one, so the engine can honour it instead of hammering the provider.
+     */
+    public static function rateLimitedByProvider(string $provider, ?int $retryAfterSeconds = null): self
+    {
+        return new self(
+            'AI assistance is temporarily unavailable. Please try again shortly.',
+            'ai_provider_rate_limited',
+            ['reason' => 'rate_limited', 'provider' => $provider, 'retry_after_seconds' => $retryAfterSeconds],
+        );
+    }
+
+    /**
+     * The provider answered with a server error.
+     */
+    public static function providerStatus(string $provider, int $status): self
+    {
+        return new self(
+            'AI assistance is temporarily unavailable. Please try again shortly.',
+            'ai_unavailable',
+            ['reason' => 'provider_status', 'provider' => $provider, 'provider_status' => $status],
+        );
+    }
+
+    /**
+     * The call did not complete within the configured timeout.
+     */
+    public static function timedOut(string $provider, int $timeoutSeconds): self
+    {
+        return new self(
+            'AI assistance is temporarily unavailable. Please try again shortly.',
+            'ai_provider_timeout',
+            ['reason' => 'timeout', 'provider' => $provider, 'timeout_seconds' => $timeoutSeconds],
+        );
+    }
+
     public function errorCode(): string
     {
         return $this->errorCode;
+    }
+
+    /**
+     * The normalized failure category for this exception.
+     *
+     * The execution engine decides retries and failover on this, never on the
+     * raw message. Derived from the code so an adapter cannot misreport it.
+     */
+    public function errorCategory(): AiErrorCategory
+    {
+        return match ($this->errorCode) {
+            'ai_not_configured' => AiErrorCategory::Connection,
+            'ai_feature_disabled' => AiErrorCategory::Validation,
+            'ai_rate_limited' => AiErrorCategory::RateLimit,
+            'ai_unsupported_capability' => AiErrorCategory::Validation,
+            'ai_provider_authentication' => AiErrorCategory::Authentication,
+            'ai_provider_rate_limited' => AiErrorCategory::RateLimit,
+            'ai_provider_timeout' => AiErrorCategory::Timeout,
+            default => match ($this->context['reason'] ?? null) {
+                'connection' => AiErrorCategory::Connection,
+                'timeout' => AiErrorCategory::Timeout,
+                'provider_status' => AiErrorCategory::ServerError,
+                'rate_limited' => AiErrorCategory::RateLimit,
+                'authentication' => AiErrorCategory::Authentication,
+                default => AiErrorCategory::Unknown,
+            },
+        };
     }
 
     /**

@@ -23,7 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Inventory is tracked per store, which is why a tenant always owns at least
  * one store (created together with the tenant).
  */
-#[Fillable(['tenant_id', 'name', 'name_ar', 'slug', 'description', 'description_ar', 'logo_url', 'status', 'email', 'phone', 'country', 'currency', 'currency_decimals', 'currency_updated_at', 'timezone', 'enabled_locales', 'is_default', 'storefront_enabled', 'storefront_settings', 'payment_settings'])]
+#[Fillable(['tenant_id', 'name', 'name_ar', 'slug', 'description', 'description_ar', 'logo_url', 'status', 'email', 'phone', 'country', 'currency', 'currency_decimals', 'currency_updated_at', 'timezone', 'enabled_locales', 'default_locale', 'is_default', 'storefront_enabled', 'storefront_settings', 'payment_settings'])]
 class Store extends Model
 {
     /** @use HasFactory<StoreFactory> */
@@ -34,7 +34,7 @@ class Store extends Model
      */
     protected function auditAttributes(): array
     {
-        return ['name', 'name_ar', 'slug', 'description', 'description_ar', 'logo_url', 'status', 'email', 'phone', 'country', 'currency', 'currency_decimals', 'timezone', 'enabled_locales', 'is_default', 'storefront_enabled'];
+        return ['name', 'name_ar', 'slug', 'description', 'description_ar', 'logo_url', 'status', 'email', 'phone', 'country', 'currency', 'currency_decimals', 'timezone', 'enabled_locales', 'default_locale', 'is_default', 'storefront_enabled'];
     }
 
     protected function casts(): array

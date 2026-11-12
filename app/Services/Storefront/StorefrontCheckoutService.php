@@ -13,6 +13,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
+use App\Services\Configuration\FeatureFlagService;
 use App\Services\Orders\OrderService;
 use App\Services\Payments\PaymentSessionService;
 use App\Support\Tenancy\TenantContext;
@@ -36,6 +37,7 @@ class StorefrontCheckoutService
         private readonly PaymentService $payments,
         private readonly PaymentSessionService $sessions,
         private readonly TenantContext $tenants,
+        private readonly FeatureFlagService $features,
     ) {}
 
     /**
@@ -43,6 +45,13 @@ class StorefrontCheckoutService
      */
     public function checkout(Store $store, array $data): Order
     {
+        if ($this->features->disabled('guest_checkout')) {
+            // There is no account-based checkout path yet, so withdrawing
+            // guest checkout honestly closes the storefront checkout rather
+            // than silently accepting an order the platform said it would not.
+            throw BusinessRuleViolation::because('Guest checkout is currently disabled by the platform.');
+        }
+
         if ($this->tenants->id() !== (int) $store->tenant_id) {
             throw BusinessRuleViolation::because('This storefront is not available.');
         }

@@ -8,8 +8,13 @@ use App\Models\AutomationRule;
 use App\Models\Category;
 use App\Models\ContentPage;
 use App\Models\FaqEntry;
+use App\Models\HelpArticle;
+use App\Models\HelpCategory;
+use App\Models\HelpTag;
 use App\Models\Newsletter;
 use App\Models\Product;
+use App\Models\ProductImage;
+use App\Models\ProductVariant;
 use App\Models\ShippingZone;
 use App\Models\Store;
 use App\Services\Storefront\StorefrontSettings;
@@ -82,17 +87,118 @@ final class TranslationEntityRegistry
                 tenantScoped: true,
                 fields: [
                     new TranslationField('name', 'Product name', 'text', 255),
-                    new TranslationField('description', 'Description', 'text', 10000),
+                    new TranslationField('short_description', 'Short description', 'text', 2000),
+                    new TranslationField('description', 'Full description', 'html', 20000),
+                    new TranslationField('highlights', 'Highlights', 'text', 5000),
+                    new TranslationField('features', 'Features', 'text', 8000),
+                    new TranslationField('specifications', 'Specifications', 'text', 12000),
+                    new TranslationField('tags', 'Tags', 'text', 2000),
+                    new TranslationField('seo_title', 'SEO title', 'text', 255),
+                    new TranslationField('seo_description', 'SEO description', 'text', 500),
+                    new TranslationField('seo_keywords', 'SEO keywords', 'text', 500),
+                    new TranslationField('slug', 'Localized slug', 'text', 180),
                 ],
                 source: static fn (Model $model, string $field): ?string => $model instanceof Product
-                    ? $model->getAttribute($field)
+                    ? $model->translationSource($field)
                     : null,
                 mirror: static function (Model $model, string $field, string $locale, string $text): void {
-                    // Products have no legacy translation columns. The review
-                    // ledger is the overlay the storefront reads.
+                    // The review ledger is the overlay the storefront reads.
+                    // A localized slug is identity-adjacent, so it is also
+                    // mirrored onto the product to make URL resolution a plain
+                    // indexed lookup rather than a ledger scan.
+                    if ($model instanceof Product && $field === 'slug') {
+                        $model->applyLocalizedSlug($locale, $text);
+                    }
                 },
-                storeId: static fn (Model $model): ?int => $model instanceof Product ? $model->store_id : null,
+                storeId: static function (Model $model): ?int {
+                    if (! $model instanceof Product) {
+                        return null;
+                    }
+
+                    if ($model->store_id !== null) {
+                        return (int) $model->store_id;
+                    }
+
+                    $storeId = Store::query()
+                        ->where('tenant_id', $model->tenant_id)
+                        ->orderByDesc('is_default')
+                        ->orderBy('id')
+                        ->value('id');
+
+                    return $storeId === null ? null : (int) $storeId;
+                },
                 displayName: static fn (Model $model): string => $model instanceof Product ? (string) $model->name : '',
+                protectedTerms: static fn (Model $model): array => [],
+            ),
+            new TranslationEntity(
+                key: 'product_variant',
+                label: 'Product variant',
+                model: ProductVariant::class,
+                tenantScoped: true,
+                fields: [
+                    new TranslationField('name', 'Variant name', 'text', 255),
+                    new TranslationField('description', 'Variant description', 'text', 2000),
+                ],
+                source: static fn (Model $model, string $field): ?string => $model instanceof ProductVariant
+                    ? (is_string($value = $model->getAttribute($field)) && trim($value) !== '' ? trim($value) : null)
+                    : null,
+                mirror: static function (Model $model, string $field, string $locale, string $text): void {
+                    // Ledger overlay only; the variant row itself never changes.
+                },
+                storeId: static function (Model $model): ?int {
+                    if (! $model instanceof ProductVariant) {
+                        return null;
+                    }
+
+                    $product = Product::query()->find($model->product_id);
+
+                    if (! $product instanceof Product) {
+                        return null;
+                    }
+
+                    if ($product->store_id !== null) {
+                        return (int) $product->store_id;
+                    }
+
+                    $storeId = Store::query()
+                        ->where('tenant_id', $product->tenant_id)
+                        ->orderByDesc('is_default')
+                        ->orderBy('id')
+                        ->value('id');
+
+                    return $storeId === null ? null : (int) $storeId;
+                },
+                displayName: static fn (Model $model): string => $model instanceof ProductVariant ? (string) $model->name : '',
+                protectedTerms: static fn (Model $model): array => [],
+            ),
+            new TranslationEntity(
+                key: 'product_image',
+                label: 'Product image',
+                model: ProductImage::class,
+                tenantScoped: true,
+                fields: [
+                    new TranslationField('alt_text', 'Alt text', 'text', 255),
+                    new TranslationField('caption', 'Caption', 'text', 255),
+                ],
+                source: static fn (Model $model, string $field): ?string => $model instanceof ProductImage
+                    ? (is_string($value = $model->getAttribute($field)) && trim($value) !== '' ? trim($value) : null)
+                    : null,
+                mirror: static function (Model $model, string $field, string $locale, string $text): void {
+                    // Ledger overlay only; the file and its canonical alt text
+                    // stay exactly where they are.
+                },
+                storeId: static function (Model $model): ?int {
+                    if (! $model instanceof ProductImage) {
+                        return null;
+                    }
+
+                    $product = Product::query()->find($model->product_id);
+
+                    return $product instanceof Product && $product->store_id !== null ? (int) $product->store_id : null;
+                },
+                displayName: static fn (Model $model): string => $model instanceof ProductImage
+                    ? ((string) ($model->alt_text ?? '') !== '' ? (string) $model->alt_text : 'Image #'.(int) $model->getKey())
+                    : '',
                 protectedTerms: static fn (Model $model): array => [],
             ),
             new TranslationEntity(
@@ -274,6 +380,101 @@ final class TranslationEntityRegistry
                 },
                 storeId: static fn (Model $model): ?int => null,
                 displayName: static fn (Model $model): string => $model instanceof Newsletter ? (string) $model->title : '',
+                protectedTerms: static fn (Model $model): array => [],
+            ),
+            new TranslationEntity(
+                key: 'help_article',
+                label: 'Help article',
+                model: HelpArticle::class,
+                tenantScoped: false,
+                fields: [
+                    new TranslationField('title', 'Title', 'text', 255),
+                    new TranslationField('excerpt', 'Excerpt', 'text', 320),
+                    new TranslationField('body', 'Body', 'html', 50000),
+                    new TranslationField('meta_title', 'Meta title', 'text', 255),
+                    new TranslationField('meta_description', 'Meta description', 'text', 320),
+                    new TranslationField('slug', 'Localized slug', 'text', 180),
+                ],
+                source: static fn (Model $model, string $field): ?string => $model instanceof HelpArticle
+                    ? $model->getAttribute($field)
+                    : null,
+                mirror: static function (Model $model, string $field, string $locale, string $text): void {
+                    if (! $model instanceof HelpArticle) {
+                        return;
+                    }
+
+                    // A localized slug is identity-adjacent, so it is mirrored
+                    // onto the row exactly like a product's, keeping URL
+                    // resolution an indexed lookup that refuses collisions.
+                    if ($field === 'slug') {
+                        $model->applyLocalizedSlug($locale, $text);
+
+                        return;
+                    }
+
+                    if ($locale !== 'ar') {
+                        return;
+                    }
+
+                    $column = $field.'_ar';
+
+                    if (in_array($column, ['title_ar', 'excerpt_ar', 'body_ar', 'meta_title_ar', 'meta_description_ar'], true)) {
+                        $model->forceFill([$column => $text])->saveQuietly();
+                    }
+                },
+                storeId: static fn (Model $model): ?int => null,
+                displayName: static fn (Model $model): string => $model instanceof HelpArticle ? (string) $model->title : '',
+                protectedTerms: static fn (Model $model): array => [],
+            ),
+            new TranslationEntity(
+                key: 'help_category',
+                label: 'Help category',
+                model: HelpCategory::class,
+                tenantScoped: false,
+                fields: [
+                    new TranslationField('name', 'Name', 'text', 120),
+                    new TranslationField('description', 'Description', 'text', 500),
+                ],
+                source: static fn (Model $model, string $field): ?string => $model instanceof HelpCategory
+                    ? $model->getAttribute($field)
+                    : null,
+                mirror: static function (Model $model, string $field, string $locale, string $text): void {
+                    if (! $model instanceof HelpCategory || $locale !== 'ar') {
+                        return;
+                    }
+
+                    $column = $field.'_ar';
+
+                    if (in_array($column, ['name_ar', 'description_ar'], true)) {
+                        $model->forceFill([$column => $text])->saveQuietly();
+                    }
+                },
+                storeId: static fn (Model $model): ?int => null,
+                displayName: static fn (Model $model): string => $model instanceof HelpCategory ? (string) $model->name : '',
+                protectedTerms: static fn (Model $model): array => [],
+            ),
+            new TranslationEntity(
+                key: 'help_tag',
+                label: 'Help tag',
+                model: HelpTag::class,
+                tenantScoped: false,
+                fields: [
+                    new TranslationField('name', 'Name', 'text', 60),
+                ],
+                source: static fn (Model $model, string $field): ?string => $model instanceof HelpTag
+                    ? $model->getAttribute($field)
+                    : null,
+                mirror: static function (Model $model, string $field, string $locale, string $text): void {
+                    if (! $model instanceof HelpTag || $locale !== 'ar') {
+                        return;
+                    }
+
+                    if ($field === 'name') {
+                        $model->forceFill(['name_ar' => $text])->saveQuietly();
+                    }
+                },
+                storeId: static fn (Model $model): ?int => null,
+                displayName: static fn (Model $model): string => $model instanceof HelpTag ? (string) $model->name : '',
                 protectedTerms: static fn (Model $model): array => [],
             ),
             new TranslationEntity(

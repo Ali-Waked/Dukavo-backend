@@ -25,6 +25,8 @@ class StoreProductImageRequest extends ApiRequest
             'images.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
             'alt_text' => ['sometimes', 'array'],
             'alt_text.*' => ['nullable', 'string', 'max:255'],
+            'caption' => ['sometimes', 'array'],
+            'caption.*' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

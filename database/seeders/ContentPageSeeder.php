@@ -456,28 +456,31 @@ class ContentPageSeeder extends Seeder
             'key' => 'about',
             'locale' => 'en',
             'title' => 'About Dukavo',
-            'intro' => 'Dukavo is built for merchants who run their business through conversation, and need the operational backbone to keep it in order.',
+            'intro' => 'Dukavo is an AI-assisted commerce platform for merchants who sell through conversation and a storefront, and need the operational backbone to keep both in order.',
             'meta_title' => 'About Dukavo',
-            'meta_description' => 'Why Dukavo exists and how it helps merchants run their store from one place.',
+            'meta_description' => 'Why Dukavo exists and how it helps merchants run catalogue, stock, orders, conversations and a storefront from one place.',
             'published_at' => self::PUBLISHED_AT,
             'sections' => [
                 $this->section('why', 'Why Dukavo exists', 'prose', <<<'TEXT'
                 Many growing merchants run their whole business through chat and a spreadsheet. It works — until it doesn't. Orders are lost in the scroll, stock numbers stop matching reality, and the history of a customer relationship lives in someone's phone.
 
-                Dukavo exists to give that kind of business a real operating system: one place to run products, stock, orders, customers and conversations, without forcing it into software built for somebody else.
+                Dukavo exists to give that kind of business a real operating system: one place to run products, stock, orders, customers, conversations and a public shop, without forcing it into software built for somebody else.
                 TEXT),
                 $this->section('what-we-do', 'What Dukavo does today', 'prose', <<<'TEXT'
-                Dukavo brings the day-to-day running of a store into one workspace.
+                Dukavo brings the day-to-day running of a store into one tenant-scoped workspace.
 
-                You manage a catalogue of products, variants, categories and images. You track stock per store with a full movement history and low-stock alerts. You run orders through their lifecycle from pending to delivered, keep customer records with their order history, and handle customer conversations — including WhatsApp — from a shared inbox. Roles and permissions let you decide exactly what each member of your team can see and do.
+                You manage a catalogue of products, variants, categories and images. You track stock per store with a full movement ledger, low-stock thresholds and stock transfers between locations. You run orders through their lifecycle from pending to delivered, keep customer records with their order history, and handle customer conversations from a shared inbox across WhatsApp Business, Instagram Messaging, Facebook Messenger, Telegram and email. Each store can publish its own public storefront with guest checkout, shipping zones, order tracking and cash-on-delivery, bank-transfer or card payments through a connected provider. Automation templates, analytics and role-based permissions cover the operational side, while AI assistance drafts replies, summaries and translations that a person reviews before anything is sent or published.
                 TEXT),
                 $this->section('how-it-works', 'How it works', 'steps', <<<'TEXT'
-                Create your workspace: Sign up and set up the business you are going to run.
-                Add your catalogue: Bring in your products, prices and images.
-                Stock your stores: Record what you have on hand in each store.
-                Take orders: Track every order from pending through to delivery.
-                Connect WhatsApp: Link your number and manage conversations from the shared inbox.
-                Invite your team: Add staff and give each person the permissions they need.
+                Join the waitlist: Onboarding is invite-only during early access; request an invitation.
+                Set up your tenant: Add your business, stores, currency and timezone.
+                Add your catalogue: Bring in products, variants, prices and images.
+                Stock your stores: Record opening stock per store and let the ledger track every movement.
+                Connect your channels: Link WhatsApp, Instagram, Messenger, Telegram or email to the shared inbox.
+                Publish your storefront: Configure a public shop with shipping zones and payment methods.
+                Take and track orders: Follow every order from pending to delivery, with guest checkout and tracking links.
+                Turn on automation and AI: Install reviewed workflows and let AI draft work for your team to approve.
+                Invite your team: Add staff and scope their permissions per module.
                 TEXT),
                 $this->section('beliefs', 'What we believe', 'cards', <<<'TEXT'
                 Your data is yours: You own what is in your workspace, and we build the product to keep it that way.
@@ -486,12 +489,12 @@ class ContentPageSeeder extends Seeder
                 Honest by default: We describe what the product does today, and label what is still to come.
                 TEXT),
                 $this->section('roadmap', 'Where Dukavo is going', 'prose', <<<'TEXT'
-                Dukavo is in active development. Online payments and billing, deeper reporting and additional sales channels are planned but not yet available, and anything that is not released is labelled as planned.
+                Dukavo is in active development. Subscription billing and plan entitlements, a storefront theme system, carrier tracking, bundle lines in storefront checkout, SMS activation, TikTok and X channels, and full merchant back-office parity on mobile are planned but not yet available. Anything that is not released is labelled as planned.
 
                 We would rather ship a smaller product that works than promise features that are not ready.
                 TEXT),
                 $this->section('get-started', 'Start with Dukavo', 'cta', <<<'TEXT'
-                Create an account to explore the platform, or get in touch and tell us what your business needs.
+                Onboarding is invite-only during early access. Join the waitlist to request an invitation, or get in touch and tell us what your business needs.
                 TEXT),
             ],
         ];
@@ -506,28 +509,31 @@ class ContentPageSeeder extends Seeder
             'key' => 'about',
             'locale' => 'ar',
             'title' => 'عن Dukavo',
-            'intro' => 'صُمّم Dukavo للتجار الذين يديرون أعمالهم عبر المحادثات، ويحتاجون إلى العمود الفقري التشغيلي الذي يحفظ لها نظامها.',
+            'intro' => 'Dukavo منصة تجارة بمساعدة الذكاء الاصطناعي للتجار الذين يبيعون عبر المحادثات وواجهة عامة، ويحتاجون إلى العمود الفقري التشغيلي الذي يحفظ نظام كليهما.',
             'meta_title' => 'عن Dukavo',
-            'meta_description' => 'لماذا وُجد Dukavo وكيف يساعد التجار على إدارة متجرهم من مكان واحد.',
+            'meta_description' => 'لماذا وُجد Dukavo وكيف يساعد التجار على إدارة الكتالوج والمخزون والطلبات والمحادثات والواجهة العامة من مكان واحد.',
             'published_at' => self::PUBLISHED_AT,
             'sections' => [
                 $this->section('why', 'لماذا وُجد Dukavo', 'prose', <<<'TEXT'
                 كثير من التجار في مرحلة النمو يديرون أعمالهم بالكامل عبر المحادثات وجدول بيانات. وهذا ينجح، إلى أن يتوقف عن النجاح. تضيع الطلبات وسط الرسائل، وتتوقف أرقام المخزون عن مطابقة الواقع، ويصبح تاريخ علاقة العميل محصورًا في هاتف أحدهم.
 
-                وُجد Dukavo ليمنح هذا النوع من الأعمال نظام تشغيل حقيقيًا: مكان واحد لإدارة المنتجات والمخزون والطلبات والعملاء والمحادثات، دون فرض برمجيات صُمّمت لشخص آخر.
+                وُجد Dukavo ليمنح هذا النوع من الأعمال نظام تشغيل حقيقيًا: مكان واحد لإدارة المنتجات والمخزون والطلبات والعملاء والمحادثات ومتجر عام، دون فرض برمجيات صُمّمت لشخص آخر.
                 TEXT),
                 $this->section('what-we-do', 'ما الذي يفعله Dukavo اليوم', 'prose', <<<'TEXT'
-                يجمع Dukavo إدارة المتجر اليومية في مساحة عمل واحدة.
+                يجمع Dukavo إدارة المتجر اليومية في مساحة عمل واحدة معزولة لكل مستأجر.
 
-                فأنت تدير كتالوجًا من المنتجات والمتغيّرات والفئات والصور. وتتبّع المخزون لكل متجر مع سجل حركة كامل وتنبيهات انخفاض المخزون. وتدير الطلبات عبر مراحلها من الانتظار حتى التسليم، وتحتفظ بسجلات العملاء مع تاريخ طلباتهم، وتتعامل مع محادثات العملاء — بما في ذلك WhatsApp — من صندوق وارد مشترك. وتتيح لك الأدوار والصلاحيات تحديد ما يمكن لكل عضو في فريقك رؤيته والقيام به بدقة.
+                فأنت تدير كتالوجًا من المنتجات والمتغيّرات والفئات والصور. وتتبّع المخزون لكل متجر مع سجل حركة كامل وحدود انخفاض المخزون وتحويلات المخزون بين المواقع. وتدير الطلبات عبر مراحلها من الانتظار حتى التسليم، وتحتفظ بسجلات العملاء مع تاريخ طلباتهم، وتتعامل مع محادثات العملاء من صندوق وارد مشترك عبر واتساب للأعمال وInstagram Messaging وFacebook Messenger وTelegram والبريد الإلكتروني. ويمكن لكل متجر نشر واجهته العامة مع الدفع كزائر ومناطق الشحن وتتبع الطلبات والدفع عند الاستلام أو التحويل البنكي أو البطاقة عبر مزوّد متصل. وتغطي قوالب الأتمتة والتحليلات والصلاحيات القائمة على الأدوار الجانب التشغيلي، بينما تصوغ مساعدة الذكاء الاصطناعي ردودًا وملخصات وترجمات يراجعها إنسان قبل إرسال أي شيء أو نشره.
                 TEXT),
                 $this->section('how-it-works', 'كيف يعمل', 'steps', <<<'TEXT'
-                أنشئ مساحة عملك: سجّل وأنشئ النشاط الذي ستديره.
-                أضف كتالوجك: أدخل منتجاتك وأسعارها وصورها.
-                جهّز مخزون متاجرك: سجّل ما لديك في كل متجر.
-                استقبل الطلبات: تتبّع كل طلب من الانتظار حتى التسليم.
-                اربط WhatsApp: اربط رقمك وأدر المحادثات من صندوق الوارد المشترك.
-                ادعُ فريقك: أضف الموظفين وامنح كل شخص الصلاحيات التي يحتاجها.
+                انضم إلى قائمة الانتظار: الانضمام بدعوة فقط خلال المرحلة التجريبية؛ اطلب دعوة.
+                جهّز مستأجرك: أضف نشاطك ومتاجرك وعملتك ومنطقتك الزمنية.
+                أضف كتالوجك: أدخل منتجاتك ومتغيّراتها وأسعارها وصورها.
+                جهّز مخزون متاجرك: سجّل مخزون البداية لكل متجر ودع السجل يتتبع كل حركة.
+                اربط قنواتك: اربط واتساب أو Instagram أو Messenger أو Telegram أو البريد بصندوق الوارد المشترك.
+                انشر واجهتك العامة: هيّئ متجرًا عامًا بمناطق شحن وطرق دفع.
+                استقبل الطلبات وتتبّعها: تتبّع كل طلب من الانتظار حتى التسليم، مع الدفع كزائر وروابط التتبع.
+                شغّل الأتمتة والذكاء الاصطناعي: ثبّت سير عمل مراجعًا ودع الذكاء الاصطناعي يصوغ عملًا لفريقك ليعتمده.
+                ادعُ فريقك: أضف الموظفين وحدّد صلاحياتهم لكل وحدة.
                 TEXT),
                 $this->section('beliefs', 'ما نؤمن به', 'cards', <<<'TEXT'
                 بياناتك ملكك: أنت تملك ما في مساحة عملك، ونبني المنتج على هذا الأساس.
@@ -536,12 +542,12 @@ class ContentPageSeeder extends Seeder
                 الصدق افتراضيًا: نصف ما يفعله المنتج اليوم، ونوسم ما لم يصل بعد.
                 TEXT),
                 $this->section('roadmap', 'إلى أين يتجه Dukavo', 'prose', <<<'TEXT'
-                يخضع Dukavo لتطوير نشط. الدفع والفوترة الإلكترونية، وتقارير أعمق، وقنوات بيع إضافية، مخطّط لها لكنها غير متاحة بعد، وكل ما لم يُطلق يُوسم بأنه مخطّط له.
+                يخضع Dukavo لتطوير نشط. الفوترة بالاشتراك واستحقاقات الخطط، ونظام قوالب الواجهة العامة، وتتبع شركات الشحن، وبنود الحزم في دفع الواجهة العامة، وتفعيل الرسائل النصية، وقنوات TikTok وX، والتكافؤ الكامل للوحة التاجر على الجوال، مخطّط لها لكنها غير متاحة بعد. وكل ما لم يُطلق يُوسم بأنه مخطّط له.
 
                 ونفضّل إطلاق منتج أصغر يعمل فعليًا على أن نَعِد بمزايا غير جاهزة.
                 TEXT),
                 $this->section('get-started', 'ابدأ مع Dukavo', 'cta', <<<'TEXT'
-                أنشئ حسابًا لاستكشاف المنصة، أو تواصل معنا وأخبرنا بما يحتاجه نشاطك.
+                الانضمام بدعوة فقط خلال المرحلة التجريبية. انضم إلى قائمة الانتظار لطلب دعوة، أو تواصل معنا وأخبرنا بما يحتاجه نشاطك.
                 TEXT),
             ],
         ];

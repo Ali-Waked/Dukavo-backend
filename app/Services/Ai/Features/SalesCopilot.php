@@ -13,6 +13,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\Ai\AiExecutionEngine;
 use App\Services\Ai\AiGuard;
 use App\Services\Ai\AiUsageRecorder;
 use App\Services\Ai\Context\AiContext;
@@ -20,8 +21,8 @@ use App\Services\Ai\Context\ContextBuilder;
 use App\Services\Ai\Context\ContextBuilderFactory;
 use App\Services\Ai\Context\PersonalData;
 use App\Services\Ai\Data\AiCompletion;
-use App\Services\Ai\Providers\ProviderRegistry;
 use App\Services\Ai\Support\PromptGuard;
+use App\Services\Ai\Support\PromptRenderer;
 use App\Services\Ai\Validation\JsonSchemaValidator;
 use App\Services\Rbac\PermissionService;
 use App\Support\Tenancy\TenantContext;
@@ -62,17 +63,18 @@ final class SalesCopilot extends Feature
     private ?string $currency = null;
 
     public function __construct(
-        ProviderRegistry $providers,
+        AiExecutionEngine $engine,
         AiGuard $guard,
         AiUsageRecorder $usage,
         PromptGuard $prompts,
         JsonSchemaValidator $validator,
+        PromptRenderer $renderer,
         private readonly ContextBuilderFactory $context,
         private readonly PersonalData $personal,
         private readonly PermissionService $permissions,
         private readonly TenantContext $tenants,
     ) {
-        parent::__construct($providers, $guard, $usage, $prompts, $validator);
+        parent::__construct($engine, $guard, $usage, $prompts, $validator, $renderer);
     }
 
     public function useCaseKey(): string

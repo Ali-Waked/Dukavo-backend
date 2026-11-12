@@ -17,6 +17,7 @@ use App\Models\Order;
 use App\Models\RecoveryOpportunity;
 use App\Models\User;
 use App\Services\Channels\WhatsApp\Contracts\WhatsAppGateway;
+use App\Services\Configuration\FeatureFlagService;
 use App\Services\Conversations\ConversationService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -50,6 +51,7 @@ final class RecoveryService
         private readonly WhatsAppGateway $gateway,
         private readonly ConversationService $conversations,
         private readonly RecoveryEventService $events,
+        private readonly FeatureFlagService $features,
     ) {}
 
     /**
@@ -57,6 +59,10 @@ final class RecoveryService
      */
     public function contact(RecoveryOpportunity $opportunity, User $actor, array $payload): RecoveryOpportunity
     {
+        if ($this->features->disabled('recovery')) {
+            throw BusinessRuleViolation::because('Lost-sale recovery is not available on this platform right now.');
+        }
+
         $this->assertContactable($opportunity);
 
         $conversation = $opportunity->conversation()->firstOrFail();

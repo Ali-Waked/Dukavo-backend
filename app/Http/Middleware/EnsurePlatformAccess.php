@@ -27,11 +27,26 @@ class EnsurePlatformAccess
     {
         $user = $request->user();
 
-        if (! $user instanceof User || ! $this->isOperator($user)) {
+        if (! $user instanceof User) {
             throw new AuthorizationException('This area is restricted to Dukavo platform administrators.');
         }
 
-        return $next($request);
+        if ($this->isOperator($user)) {
+            return $next($request);
+        }
+
+        /*
+         * Platform Settings is permission-granular: a custom platform role may
+         * hold `platform_settings.view` (or the security/features grants)
+         * without being a system operator. The route's own permission
+         * middleware still authorises the exact section, so this exception
+         * cannot widen access to the rest of the platform console.
+         */
+        if ($this->isPlatformSettingsRoute($request) && $this->permissions->isPlatformUser($user)) {
+            return $next($request);
+        }
+
+        throw new AuthorizationException('This area is restricted to Dukavo platform administrators.');
     }
 
     /**
@@ -53,5 +68,17 @@ class EnsurePlatformAccess
     private function isOperator(User $user): bool
     {
         return $this->permissions->isPlatformOperator($user);
+    }
+
+    /**
+     * The only platform routes a non-system platform role may enter: the
+     * configuration surface, where the section permission is the real gate.
+     */
+    private function isPlatformSettingsRoute(Request $request): bool
+    {
+        return str_starts_with(
+            (string) $request->route()?->getName(),
+            'api.platform.settings.',
+        );
     }
 }
