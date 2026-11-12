@@ -12,7 +12,7 @@ Route::get('/_run/{token}', function (string $token) {
 
     $steps = [
         ['optimize:clear', []],
-        ['migrate:fresh',        ['--force' => true]],
+        ['migrate',        ['--force' => true]],
         ['db:seed',        ['--force' => true]],
         ['storage:link',   []],
         ['view:cache',     []],
