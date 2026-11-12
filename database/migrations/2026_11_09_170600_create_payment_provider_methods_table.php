@@ -30,7 +30,7 @@ return new class extends Migration
 
             $table->foreign('method_code')->references('code')->on('payment_methods')->cascadeOnUpdate();
             $table->foreign('country_code')->references('code')->on('payment_countries')->cascadeOnUpdate();
-            $table->index(['provider_id', 'country_code', 'is_active']);
+            $table->index(['provider_id', 'country_code', 'is_active'], 'payment_provider_method_active_index');
             $table->unique(['provider_id', 'method_code', 'country_code', 'source_id'], 'provider_method_country_source_unique');
         });
     }

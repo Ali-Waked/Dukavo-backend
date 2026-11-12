@@ -33,7 +33,7 @@ return new class extends Migration
 
             $table->foreign('country_code')->references('code')->on('payment_countries')->cascadeOnUpdate();
             $table->unique(['provider_id', 'country_code']);
-            $table->index(['country_code', 'merchant_onboarding']);
+            $table->index(['country_code', 'merchant_onboarding'], 'payment_provider_country_onboarding_index');
         });
     }
 

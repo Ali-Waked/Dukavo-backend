@@ -24,7 +24,7 @@ return new class extends Migration
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
 
-            $table->unique(['automation_template_id', 'version']);
+            $table->unique(['automation_template_id', 'version'], 'automation_template_version_unique');
             $table->index('checksum');
         });
     }
