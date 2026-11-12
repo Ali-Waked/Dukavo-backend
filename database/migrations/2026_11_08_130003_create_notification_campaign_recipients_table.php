@@ -20,7 +20,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('campaign_id')->constrained('notification_campaigns')->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('notification_id')->nullable()->constrained('notifications')->nullOnDelete();
+            $table->foreignUuid('notification_id')->nullable()->constrained('notifications')->nullOnDelete();
 
             $table->string('status', 20)->default('pending');
             $table->string('error')->nullable();
