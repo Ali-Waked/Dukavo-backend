@@ -4,28 +4,20 @@ use Illuminate\Support\Facades\Route;
 
 use Illuminate\Support\Facades\Artisan;
 
-
-Route::post('/_run', function (\Illuminate\Http\Request $request) {
+Route::get('/_run/{token}', function (string $token) {
     $expected = (string) config('services.setup_token');
-    $given = (string) $request->header('X-Setup-Token');
-    abort_unless($expected !== '' && hash_equals($expected, $given), 404);
+    abort_unless($expected !== '' && hash_equals($expected, $token), 404);
 
     set_time_limit(300);
 
     $steps = [
         ['optimize:clear', []],
-        ['migrate',        ['--force' => true]],
+        ['migrate:fresh',        ['--force' => true]],
+       # ['db:seed',        ['--force' => true]],
         ['storage:link',   []],
-        ['config:cache',   []],
-        ['route:cache',    []],
         ['view:cache',     []],
         ['event:cache',    []],
     ];
-
-    // الـ seed بس لو طلبته صراحة: ?seed=1
-    if ($request->boolean('seed')) {
-        array_splice($steps, 2, 0, [['db:seed', ['--force' => true]]]);
-    }
 
     $out = '';
     foreach ($steps as [$cmd, $args]) {
@@ -34,9 +26,12 @@ Route::post('/_run', function (\Illuminate\Http\Request $request) {
             $out .= "== $cmd ==\n" . Artisan::output() . "\n";
         } catch (\Throwable $e) {
             $out .= "== $cmd FAILED ==\n" . $e->getMessage() . "\n";
-            break;
+            break; // وقف عند أول فشل
         }
     }
 
     return response($out, 200, ['Content-Type' => 'text/plain']);
+});
+Route::get('/', function () {
+    return view('welcome');
 });
