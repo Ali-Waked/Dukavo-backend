@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
@@ -27,21 +26,14 @@ Route::get('/_run/{token}', function (string $token) {
             });
         }
 
-        // 3) الـ seeders الجديدة فقط
-        $ran = DB::table('seeder_runs')->pluck('seeder')->all();
-
-        foreach (File::files(database_path('seeders')) as $file) {
-            $name = $file->getFilenameWithoutExtension();
-            if ($name === 'DatabaseSeeder' || in_array($name, $ran, true)) {
-                continue;
-            }
-
-            Artisan::call('db:seed', [
-                '--class' => "Database\\Seeders\\{$name}",
-                '--force' => true,
-            ]);
-            DB::table('seeder_runs')->insert(['seeder' => $name]);
-            $out .= "== seeded: $name ==\n" . Artisan::output() . "\n";
+        // 3) DatabaseSeeder كامل، مرة وحدة
+        $key = 'DatabaseSeeder';
+        if (! DB::table('seeder_runs')->where('seeder', $key)->exists()) {
+            Artisan::call('db:seed', ['--force' => true]);
+            DB::table('seeder_runs')->insert(['seeder' => $key]);
+            $out .= "== db:seed ==\n" . Artisan::output() . "\n";
+        } else {
+            $out .= "== db:seed skipped (already ran) ==\n\n";
         }
 
         // 4) باقي الخطوات
