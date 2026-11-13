@@ -1,37 +1,65 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
 Route::get('/_run/{token}', function (string $token) {
     $expected = (string) config('services.setup_token');
     abort_unless($expected !== '' && hash_equals($expected, $token), 404);
 
     set_time_limit(300);
-
-    $steps = [
-        ['optimize:clear', []],
-        ['migrate:fresh',        ['--force' => true]],
-       # ['db:seed',        ['--force' => true]],
-        ['storage:link',   []],
-        ['view:cache',     []],
-        ['event:cache',    []],
-    ];
-
     $out = '';
-    foreach ($steps as [$cmd, $args]) {
-        try {
-            Artisan::call($cmd, $args);
-            $out .= "== $cmd ==\n" . Artisan::output() . "\n";
-        } catch (\Throwable $e) {
-            $out .= "== $cmd FAILED ==\n" . $e->getMessage() . "\n";
-            break; // وقف عند أول فشل
+
+    try {
+        // 1) الـ migrations الجديدة فقط
+        Artisan::call('migrate', ['--force' => true]);
+        $out .= "== migrate ==\n" . Artisan::output() . "\n";
+
+        // 2) جدول تتبع الـ seeders
+        if (! Schema::hasTable('seeder_runs')) {
+            Schema::create('seeder_runs', function ($table) {
+                $table->id();
+                $table->string('seeder')->unique();
+                $table->timestamp('ran_at')->useCurrent();
+            });
         }
+
+        // 3) الـ seeders الجديدة فقط
+        $ran = DB::table('seeder_runs')->pluck('seeder')->all();
+
+        foreach (File::files(database_path('seeders')) as $file) {
+            $name = $file->getFilenameWithoutExtension();
+            if ($name === 'DatabaseSeeder' || in_array($name, $ran, true)) {
+                continue;
+            }
+
+            Artisan::call('db:seed', [
+                '--class' => "Database\\Seeders\\{$name}",
+                '--force' => true,
+            ]);
+            DB::table('seeder_runs')->insert(['seeder' => $name]);
+            $out .= "== seeded: $name ==\n" . Artisan::output() . "\n";
+        }
+
+        // 4) باقي الخطوات
+        foreach (['storage:link', 'view:cache', 'event:cache'] as $cmd) {
+            try {
+                Artisan::call($cmd);
+                $out .= "== $cmd ==\n" . Artisan::output() . "\n";
+            } catch (\Throwable $e) {
+                $out .= "== $cmd skipped: " . $e->getMessage() . "\n";
+            }
+        }
+    } catch (\Throwable $e) {
+        return response($out . "== FAILED ==\n" . $e->getMessage(), 500, ['Content-Type' => 'text/plain']);
     }
 
     return response($out, 200, ['Content-Type' => 'text/plain']);
 });
+
 Route::get('/', function () {
     return view('welcome');
 });
